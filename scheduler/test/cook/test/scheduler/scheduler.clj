@@ -29,6 +29,7 @@
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
+            [cook.log-structured :as log-structured]
             [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
@@ -50,8 +51,7 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]
-            [cook.test.testutil :as tu])
+            [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SchedulingResult SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
@@ -2158,28 +2158,29 @@
 
 (deftest test-launch-matched-tasks!
   (setup)
-  (let [fake-cc (tu/make-kubernetes-compute-cluster {} #{"pool-name"} nil {})]
+  (let [fake-cc (testutil/make-kubernetes-compute-cluster {} #{"pool-name"} nil {})]
     (testing "logs transaction timeouts"
       (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
-            timeout-exception (ex-info "Transaction timed out." {})
+            timeout-exception-str "Transaction timed out."
+            timeout-exception (ex-info timeout-exception-str {})
             logged-atom (atom nil)
             job-id (create-dummy-job conn)
             job (d/entity (d/db conn) job-id)
             ^TaskRequest task-request (sched/make-task-request (d/db conn) job nil)
-            matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
+            matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]
+            job-uuid (-> task-request (get-in [:job :job/uuid]) str)]
         (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
                       d/transact (fn [_ _]
                                    (throw timeout-exception))
-                      log/log* (fn [_ level throwable message]
+                      log/log* (fn [_ level _ message]
                                  (when (= :warn level)
-                                   (reset! logged-atom {:throwable throwable
-                                                        :message message})))
+                                   (reset! logged-atom message)))
                       cc/use-cook-executor? (constantly true)
                       timers/stop (constantly nil)
                       sched/match->compute-cluster (fn [_] fake-cc)]
           (is (thrown? ExecutionException (sched/launch-matched-tasks! matches conn nil nil nil nil)))
-          (is (= timeout-exception (:throwable @logged-atom)))
-          (is (str/includes? (:message @logged-atom) (str job-id))))))
+          (is (str/includes? @logged-atom timeout-exception-str))
+          (is (str/includes? @logged-atom job-uuid)))))
 
     (testing "catches exceptions in compute cluster loop"
       (let [matches [{:leases [{:offer {}}]}]]

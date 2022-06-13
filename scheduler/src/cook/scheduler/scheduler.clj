@@ -865,8 +865,9 @@
     matches-kept))
 
 (defn handle-launch-task-metrics
-  [matches count-txns pool-name compute-cluster-name]
-  (let [offers-matched (->> matches
+  [matches count-txns pool-name compute-cluster]
+  (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
+        offers-matched (->> matches
                             (mapcat :leases)
                             (map :offer))
         num-offers-matched (->> offers-matched
@@ -886,7 +887,7 @@
     (meters/mark! scheduler-offer-matched num-offers-matched)
     (histograms/update! number-offers-matched num-offers-matched)
     (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) count-txns)
-    (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name compute-cluster-name)) count-txns)))
+    (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name compute-cluster)) count-txns)))
 
 (def kill-lock-timer-for-launch (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-launch"]))
 
@@ -902,9 +903,9 @@
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         task-txns (matches->task-txns matches)
         count-txns (count task-txns)
+        matches-for-logging (format-matches-for-structured-logging matches)
         kill-lock-object (cc/kill-lock-object compute-cluster)
-        kill-lock-timer-context (timers/start kill-lock-timer-for-launch)
-        matches-for-logging (format-matches-for-structured-logging matches)]
+        kill-lock-timer-context (timers/start kill-lock-timer-for-launch)]
     (log-structured/info "Writing tasks"
                          ; use print-str for the first 10 tasks so that we don't treat the map as json
                          {:first-ten-tasks (print-str (take 10 matches-for-logging))
@@ -928,15 +929,17 @@
             conn
             (reduce into [] task-txns)
             (fn [e]
-              (log-structured/warn e "Transaction timed out, so these tasks might be present"
-                        "in Datomic without actually having been launched in the compute cluster"
-                                   {:pool-name pool-name
-                                    :task-ids (print-str
-                                                (for [{:keys [task-id]} matches-for-logging]
-                                                  [task-id]))})
+              (log-structured/warn (print-str "Transaction timed out, so these tasks might be present"
+                                              "in Datomic without actually having been launched in compute cluster"
+                                              matches-for-logging)
+                                   {:compute-cluster compute-cluster-name
+                                    :pool pool-name}
+                                   e)
+              ;(log/warn e "In" pool-name ", transaction timed out, so these tasks might be present"
+              ;          "in Datomic without actually having been launched in compute cluster" matches)
               (throw e))))
 
-        (handle-launch-task-metrics matches count-txns pool-name compute-cluster-name)
+        (handle-launch-task-metrics matches count-txns pool-name compute-cluster)
 
         ;; Launching the matched tasks MUST happen after the above transaction in
         ;; order to allow a transaction failure (due to failed preconditions)
