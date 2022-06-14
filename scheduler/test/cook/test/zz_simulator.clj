@@ -182,7 +182,8 @@
             :server-config host-settings#
             :task-constraints task-constraints#
             :trigger-chans trigger-chans#
-            :zk-prefix zk-prefix#})
+            :zk-prefix zk-prefix#
+            :api-only false})
          (do ~@body))
        (finally
          (.close curator-framework#)

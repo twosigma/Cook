@@ -108,44 +108,39 @@
                       ; We track queue limits on all nodes, not just the leader, because
                       ; we need to check them when job submission requests come in
                       (queue-limit/start-updating-queue-lengths)
-
-                      (if (cook.config/api-only-mode?)
-                        (if curator-framework
-                          (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
-                                          {:curator-framework curator-framework}))
-                          (log/info "This node is in API-only mode, and will not participate in scheduling"))
-                        (if curator-framework
-                          (do
-                            (log/info "Initializing mesos scheduler")
-                            (try
-                              (Class/forName "org.apache.mesos.Scheduler")
-                              ((util/lazy-load-var 'cook.mesos/start-leader-selector)
-                                {:curator-framework curator-framework
-                                 :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                                :fenzo-scaleback fenzo-scaleback
-                                                :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                                :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                                :fenzo-fitness-calculator fenzo-fitness-calculator
-                                                :good-enough-fitness good-enough-fitness}
-                                 :mea-culpa-failure-limit mea-culpa-failure-limit
-                                 :mesos-datomic-conn datomic/conn
-                                 :mesos-datomic-mult mesos-datomic-mult
-                                 :mesos-heartbeat-chan mesos-heartbeat-chan
-                                 :leadership-atom leadership-atom
-                                 :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
-                                 :mesos-run-as-user mesos-run-as-user
-                                 :offer-incubate-time-ms offer-incubate-time-ms
-                                 :optimizer-config optimizer
-                                 :rebalancer-config rebalancer
-                                 :server-config {:hostname hostname
-                                                 :server-port server-port}
-                                 :task-constraints task-constraints
-                                 :trigger-chans trigger-chans
-                                 :zk-prefix mesos-leader-path})
-                              (catch ClassNotFoundException e
-                                (log/warn e "Not loading mesos support...")
-                                nil)))
-                          (throw (ex-info "This node does not have a curator configured" {})))))})
+                      (if curator-framework
+                        (do
+                          (log/info "Initializing mesos scheduler")
+                          (try
+                            (Class/forName "org.apache.mesos.Scheduler")
+                            ((util/lazy-load-var 'cook.mesos/start-leader-selector)
+                              {:curator-framework curator-framework
+                               :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                              :fenzo-scaleback fenzo-scaleback
+                                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                              :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                              :fenzo-fitness-calculator fenzo-fitness-calculator
+                                              :good-enough-fitness good-enough-fitness}
+                               :mea-culpa-failure-limit mea-culpa-failure-limit
+                               :mesos-datomic-conn datomic/conn
+                               :mesos-datomic-mult mesos-datomic-mult
+                               :mesos-heartbeat-chan mesos-heartbeat-chan
+                               :leadership-atom leadership-atom
+                               :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
+                               :mesos-run-as-user mesos-run-as-user
+                               :offer-incubate-time-ms offer-incubate-time-ms
+                               :optimizer-config optimizer
+                               :rebalancer-config rebalancer
+                               :server-config {:hostname hostname
+                                               :server-port server-port}
+                               :task-constraints task-constraints
+                               :trigger-chans trigger-chans
+                               :zk-prefix mesos-leader-path
+                               :api-only? (cook.config/api-only-mode?)})
+                            (catch ClassNotFoundException e
+                              (log/warn e "Not loading mesos support...")
+                              nil)))
+                        (throw (ex-info "This node does not have a curator configured" {}))))})
 
 (defn health-check-middleware
   "This adds /debug to return 200 OK"
