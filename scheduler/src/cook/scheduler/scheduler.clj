@@ -935,8 +935,6 @@
                                    {:compute-cluster compute-cluster-name
                                     :pool pool-name}
                                    e)
-              ;(log/warn e "In" pool-name ", transaction timed out, so these tasks might be present"
-              ;          "in Datomic without actually having been launched in compute cluster" matches)
               (throw e))))
 
         (handle-launch-task-metrics matches count-txns pool-name compute-cluster)
