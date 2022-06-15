@@ -271,7 +271,7 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
                               retry=tenacity.retry_if_exception_type(CookRetriableException),
                               stop=tenacity.stop_after_delay(one_day_in_seconds),
                               reraise=True)
-        r.call(query_unique_and_run)
+        r.__call__(query_unique_and_run)
     else:
         query_unique_and_run()
 
