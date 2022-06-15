@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.60.2] - 2022-06-15
+### Fixed
+- Fix bug in api-only flag that would fail operations requiring a connection to the leader, from @samincheva
+
 ## [1.60.1] - 2022-06-09
 ### Changed
 - Cook now determines which pool a k8s node is in via a label instead of a taint, from @scrosby
