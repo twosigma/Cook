@@ -171,11 +171,12 @@
    progress-config               -- map, config for progress publishing. See scheduler/docs/configuration.adoc
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
-   sandbox-syncer-state          -- map, representing the sandbox syncer object"
+   sandbox-syncer-state          -- map, representing the sandbox syncer object
+   api-only?                     -- bool, true if this instance should not actually join the leader selection"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
            mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
-           zk-prefix]}]
+           zk-prefix api-only?]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
@@ -184,6 +185,7 @@
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         cluster-name->compute-cluster @cc/cluster-name->compute-cluster-atom
         rebalancer-reservation-atom (atom {})
+        _ (log/info "Starting leader selection" :api-only? api-only?)
         _ (log/info "Using path" zk-prefix "for leader selection")
         leader-selector (LeaderSelector.
                           curator-framework
@@ -319,11 +321,18 @@
                                  (or server-port server-https-port) \#
                                  (if server-port "http" "https") \#
                                  (java.util.UUID/randomUUID)))
-    (.autoRequeue leader-selector)
-    (.start leader-selector)
-    (log/info "Started the leader selector")
+    (if api-only?
+      ; If this is an api-only instance, we still want all the leader election configuration to be set,
+      ; without actually joing the election process.
+      ; This allows the instance to correctly forward client requests to the leader as necessary.
+      (log/info "Will not join leader election, running as api-only")
+      (do
+        (.autoRequeue leader-selector)
+        (.start leader-selector)
+        (log/info "Started the leader selector")))
     {:submitter (partial submit-to-mesos mesos-datomic-conn)
      :leader-selector leader-selector}))
+
 
 (defn kill-job
   "Kills jobs. It works by marking them completed, which will trigger the subscription
