@@ -329,8 +329,7 @@
       (do
         (.autoRequeue leader-selector)
         (.start leader-selector)
-        (log/info "Started the leader selector")
-        ))
+        (log/info "Started the leader selector")))
     {:submitter (partial submit-to-mesos mesos-datomic-conn)
      :leader-selector leader-selector}))
 
