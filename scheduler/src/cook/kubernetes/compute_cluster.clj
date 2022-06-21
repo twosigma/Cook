@@ -32,7 +32,7 @@
            (java.nio.charset StandardCharsets)
            (java.io ByteArrayInputStream File FileInputStream InputStreamReader)
            (java.util.concurrent Executors ExecutorService ScheduledExecutorService TimeUnit)
-           (java.util.concurrent.locks ReentrantLock)
+           (java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock)
            (java.util Base64 UUID)
            (okhttp3 Protocol)))
 
@@ -340,7 +340,7 @@
                                      ^ExecutorService controller-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
                                      compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix
-                                     controller-lock-objects]
+                                     controller-lock-objects kill-lock-object]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -608,7 +608,9 @@
     sandbox-url)
 
   (launch-rate-limiter
-    [_] compute-cluster-launch-rate-limiter))
+    [_] compute-cluster-launch-rate-limiter)
+
+  (kill-lock-object [_] kill-lock-object))
 
 (defn get-or-create-cluster-entity-id
   [conn compute-cluster-name]
@@ -836,6 +838,8 @@
                                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix
                                                     ; Vector instead of seq for O(1) access.
                                                     (with-meta (vec (repeatedly lock-shard-count #(ReentrantLock.)))
-                                                               {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")}))]
+                                                               {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")})
+                                                    ; cluster-level kill-lock. See cc/kill-lock-object
+                                                    (ReentrantReadWriteLock. true))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))

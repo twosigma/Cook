@@ -37,6 +37,7 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import (java.net URLEncoder)
+           (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.mesos Protos$TaskStatus$Reason)))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
@@ -232,7 +233,8 @@
 
 (defrecord MesosComputeCluster [compute-cluster-name framework-id db-id driver-atom
                                 sandbox-syncer-state exit-code-syncer-state mesos-heartbeat-chan
-                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults compute-cluster-launch-rate-limiter]
+                                progress-update-chans trigger-chans mesos-config pool->offers-chan container-defaults
+                                compute-cluster-launch-rate-limiter kill-lock-object]
   cc/ComputeCluster
   (compute-cluster-name [this]
     compute-cluster-name)
@@ -334,7 +336,9 @@
         (log/debug e "Unable to retrieve directory path for" task-id "on agent" hostname)
         nil)))
 
-  (launch-rate-limiter [_] compute-cluster-launch-rate-limiter))
+  (launch-rate-limiter [_] compute-cluster-launch-rate-limiter)
+
+  (kill-lock-object [_] kill-lock-object))
 
 ; Internal method
 (defn mesos-cluster->compute-cluster-map-for-datomic
@@ -429,7 +433,9 @@
                                                        mesos-config
                                                        pool->offer-chan
                                                        container-defaults
-                                                       compute-cluster-launch-rate-limiter)]
+                                                       compute-cluster-launch-rate-limiter
+                                                       ; cluster-level kill-lock. See cc/kill-lock-object
+                                                       (ReentrantReadWriteLock. true))]
       (log/info "Registering compute cluster" mesos-compute-cluster)
       (cc/register-compute-cluster! mesos-compute-cluster)
       mesos-compute-cluster)
