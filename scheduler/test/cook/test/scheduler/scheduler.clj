@@ -57,9 +57,9 @@
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
+           (java.util.concurrent ExecutionException)
            (java.util.concurrent.locks ReentrantReadWriteLock)
-           (org.mockito Mockito)
-           (java.util.concurrent ExecutionException)))
+           (org.mockito Mockito)))
 
 
 (use-fixtures :once cook.test.postgres/with-pg-db)
