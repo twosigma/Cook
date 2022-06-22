@@ -985,30 +985,6 @@
             (doall (for [[scored expected] scored->expected]
               (is (= scored expected))))))))))
 
-(deftest test-transact-preemption
-  (setup)
-  (testing "testing conditional to preempt only running and unknown instances"
-    (let [datomic-uri "datomic:mem://test-init-state"
-          conn (restore-fresh-database! datomic-uri)
-          db (d/db conn)
-          job1 (create-dummy-job conn :user "alexh" :memory 10.0 :ncpus 10.0)
-          job2 (create-dummy-job conn :user "alexh" :memory 10.0 :ncpus 10.0)
-          job3 (create-dummy-job conn :user "alexh" :memory 10.0 :ncpus 10.0)
-
-          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (create-dummy-instance conn job2 :instance-status :instance.status/unknown)
-          task3 (create-dummy-instance conn job3 :instance-status :instance.status/success)
-
-          task-ent1 (d/entity (d/db conn) task1)
-          task-ent2 (d/entity (d/db conn) task2)
-          task-ent3 (d/entity (d/db conn) task3)]
-
-      ;; Transaction exceptions are wrapped and converted to a log, so test for nil return.
-      (is (not (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent1))))
-      (is (not (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent2))))
-
-      (is (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent3))))))
-
 (defn rebalance
   "Calculates the jobs to make for and the initial state, and then delegates to rebalancer/rebalance"
   [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
