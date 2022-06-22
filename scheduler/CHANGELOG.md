@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.61.0] - 2022-06-22
+### Changed
+- Moved the global launch/kill ordering lock to be per compute-cluster, from @laurameng
+
 ## [1.60.2] - 2022-06-15
 ### Fixed
 - Fix bug in api-only flag that would fail operations requiring a connection to the leader, from @samincheva
