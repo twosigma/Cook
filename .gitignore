@@ -44,5 +44,3 @@ dist
 .vagrant/
 jobclient/python/docs/build/
 *.egg-info/
-.clj-kondo/
-.lsp/

@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.rebalancer
-  (:require [clojure.core.async :as async]
+  (:require [chime :refer [chime-at]]
+            [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
@@ -27,7 +28,7 @@
             [cook.scheduler.dru :as dru]
             [cook.task :as task]
             [cook.tools :as util]
-            [datomic.api :as d]
+            [datomic.api :as d :refer [q]]
             [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
@@ -55,8 +56,12 @@
 ;;;
 ;;; Within each cycle, the rebalancer takes the first n tasks in a global DRU queue, it then 'tries' to see if they can
 ;;; (and should) preempt any existing running tasks. Only tasks over the share are eligible to be preempted. We only do
-;;; the preemption if the DRU change is sufficiently large. If there is a set of running tasks that satisfy the 
-;;; criteria, they are killed and the host is reserved to launch the waiting job.
+;;; the preemption if the DRU change is sufficiently large. If there is a set of running tasks that satisfy the criteria, they are killed and the host is reserved to launch the waiting job.
+;;; be killed. 
+;;;
+;;; At the start of a cycle, Rebalancer initializes its internal state. Then, for each iteration in a given cycle,
+;;; Rebalancer processes a pending job and tries to make room for it by finding a task to preempt and updates its
+;;; internal state if such preemption is found.
 ;;;
 ;;; Preemption Principle
 ;;; Rebalancer uses a score-based preemption algorithm.
@@ -476,7 +481,7 @@
        ;; all over the place.
        (let [job-eid (:db/id (:job/_instance task-ent))
              task-eid (:db/id task-ent)]
-         [[:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
+         [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
           [:generic/atomic-inc job-eid :job/preemptions 1]
           ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
           ;; transaction; see the comment in the definition of :instance/update-state for more details
