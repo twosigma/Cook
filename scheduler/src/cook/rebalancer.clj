@@ -476,13 +476,14 @@
        ;; all over the place.
        (let [job-eid (:db/id (:job/_instance task-ent))
              task-eid (:db/id task-ent)]
-         [[:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
-          [:generic/atomic-inc job-eid :job/preemptions 1]
-          ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
-          ;; transaction; see the comment in the definition of :instance/update-state for more details
-          [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
-          [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
-          [:db/add task-eid :instance/preempted? true]]))
+         [(do (log/info "calling ensure-some") [:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}])
+          (do (log/info "calling atomic-inc") [:generic/atomic-inc job-eid :job/preemptions 1])
+           (do (log/info "calling update-state") [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]])
+           (do (log/info "calling add") [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]])
+           (do (log/info "calling add") [:db/add task-eid :instance/preempted? true])
+          
+          
+          ]))
     (catch Throwable e
       (log/warn
         e "In" pool-name "pool, failed to transact preemption"

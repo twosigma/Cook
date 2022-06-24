@@ -1140,16 +1140,27 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Ensures an attribute of an entity has at least one of the expected values. Throws exception otherwise"
     :db/fn #db/fn {:lang "clojure"
                    :params [db e a values]
-                   :requires [[metatransaction.core :as mt]]
+                   :requires [[metatransaction.core :as mt]
+                              [clojure.tools.logging :as log]]
                    :code
-                   (let [db (mt/filter-committed db)] 
-                     (if (some values 
-                               (map :v 
-                                    (seq (d/datoms db :eavt e a)))) 
-                       nil 
-                       (throw (ex-info "Fail to ensure attribute" {:entity e 
-                                                                   :attribute a 
-                                                                   :expected values}))))}}
+                   (let [db (mt/filter-committed db)]
+                    (do (log/info e a values)
+                        (if (some values 
+                                    (let [datoms (seq (d/datoms db :eavt e a))
+                                          datoms-values (map :v datoms)
+                                          res (some values datoms-values)]
+                                      (do
+                                        (log/info "Datoms" datoms)
+                                        (log/info "Datoms values" datoms-values)
+                                        (log/info "Get running status entity" (seq (d/datoms db :eavt e a (d/entid db :instance.status/running))))
+                                        (log/info "Get unknown status entity" (seq (d/datoms db :eavt e a (d/entid db :instance.status/unknown)))) 
+                                        (log/info "Some result" res)
+                                        datoms-values)))
+                          nil
+                          (throw (ex-info "Fail to ensure attribute" {:entity e
+                                                                      :attribute a
+                                                                      :expected values}))) 
+                        ))}}
 
    {:db/id (d/tempid :db.part/user)
     :db/ident :job/reasons->attempts-consumed
