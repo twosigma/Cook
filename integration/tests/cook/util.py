@@ -18,7 +18,6 @@ from urllib.parse import urlencode, urlparse
 import numpy
 import requests
 from retrying import retry
-
 from tests.cook import mesos
 
 logger = logging.getLogger(__name__)

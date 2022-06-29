@@ -20,14 +20,16 @@
             [cook.cache :as ccache]
             [cook.queries :as queries]
             [cook.quota :as quota]
-            [cook.test.postgres]
             [cook.rebalancer :as rebalancer :refer [->State]]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :refer [create-dummy-group create-dummy-instance create-dummy-job init-agent-attributes-cache restore-fresh-database! setup]]
+            [cook.test.postgres]
+            [cook.test.testutil :refer [create-dummy-group
+                                        create-dummy-instance create-dummy-job
+                                        init-agent-attributes-cache restore-fresh-database! setup]]
             [cook.tools :as util]
-            [datomic.api :as d :refer [q]]))
+            [datomic.api :as d]))
 
 (use-fixtures :once cook.test.postgres/with-pg-db)
 
@@ -1007,6 +1009,8 @@
       (is (not (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent1))))
       (is (not (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent2))))
 
+      (is (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent1)))
+      (is (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent2)))
       (is (nil? (rebalancer/transact-preemption! db conn "pool1" task-ent3))))))
 
 (defn rebalance
