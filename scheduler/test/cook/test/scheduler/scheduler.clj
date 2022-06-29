@@ -29,6 +29,7 @@
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as kapi]
             [cook.kubernetes.compute-cluster :as kcc]
+            [cook.log-structured :as log-structured]
             [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
@@ -56,6 +57,8 @@
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
+           (java.util.concurrent ExecutionException)
+           (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.mockito Mockito)))
 
 
@@ -1697,7 +1700,8 @@
                                           task-metadata-seq))
                               (doseq [task-metadata task-metadata-seq]
                                 (process-task-post-launch-fn task-metadata)))))
-                        (launch-rate-limiter [this] rate-limit/AllowAllRateLimiter))
+                        (launch-rate-limiter [this] rate-limit/AllowAllRateLimiter)
+                        (kill-lock-object [_] (ReentrantReadWriteLock. true)))
       test-user (System/getProperty "user.name")
       executor {:command "cook-executor"
                 :default-progress-regex-string "regex-string"
@@ -2154,35 +2158,38 @@
 
 (deftest test-launch-matched-tasks!
   (setup)
-  (testing "logs transaction timeouts"
-    (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
-          timeout-exception (ex-info "Transaction timed out." {})
-          logged-atom (atom nil)
-          job-id (create-dummy-job conn)
-          job (d/entity (d/db conn) job-id)
-          ^TaskRequest task-request (sched/make-task-request (d/db conn) job nil)
-          matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
-      (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
-                    d/transact (fn [_ _]
-                                 (throw timeout-exception))
-                    log/log* (fn [_ level throwable message]
-                               (when (= :warn level)
-                                 (reset! logged-atom {:throwable throwable
-                                                      :message message})))
-                    cc/use-cook-executor? (constantly true)
-                    timers/stop (constantly nil)]
-        (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil)))
-        (is (= timeout-exception (:throwable @logged-atom)))
-        (is (str/includes? (:message @logged-atom) (str job-id))))))
+  (let [fake-cc (testutil/make-kubernetes-compute-cluster {} #{"pool-name"} nil {})]
+    (testing "logs transaction timeouts"
+      (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
+            timeout-exception-str "Transaction timed out."
+            timeout-exception (ex-info timeout-exception-str {})
+            logged-atom (atom nil)
+            job-id (create-dummy-job conn)
+            job (d/entity (d/db conn) job-id)
+            ^TaskRequest task-request (sched/make-task-request (d/db conn) job nil)
+            matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]
+            job-uuid (-> task-request (get-in [:job :job/uuid]) str)]
+        (with-redefs [cc/db-id (constantly -1) ; So we don't throw prematurely when trying to create the task structure.
+                      d/transact (fn [_ _]
+                                   (throw timeout-exception))
+                      log/log* (fn [_ level _ message]
+                                 (when (= :warn level)
+                                   (reset! logged-atom message)))
+                      cc/use-cook-executor? (constantly true)
+                      timers/stop (constantly nil)
+                      sched/match->compute-cluster (fn [_] fake-cc)]
+          (is (thrown? ExecutionException (sched/launch-matched-tasks! matches conn nil nil nil nil)))
+          (is (str/includes? @logged-atom timeout-exception-str))
+          (is (str/includes? @logged-atom job-uuid)))))
 
-  (testing "catches exceptions in compute cluster loop"
-    (let [matches [{:leases [{:offer {}}]}]]
-      (with-redefs [cc/db-id (constantly -1)
-                    cc/compute-cluster-name (constantly "foo")
-                    cc/launch-tasks (fn [_ _ _ _] (throw (ex-info "Foo" {})))
-                    datomic/transact (constantly nil)
-                    timers/stop (constantly nil)]
-        (sched/launch-matched-tasks! matches nil nil nil nil nil)))))
+    (testing "catches exceptions in compute cluster loop"
+      (let [matches [{:leases [{:offer {}}]}]]
+        (with-redefs [cc/db-id (constantly -1)
+                      cc/launch-tasks (fn [_ _ _ _] (throw (ex-info "Foo" {})))
+                      datomic/transact (constantly nil)
+                      timers/stop (constantly nil)
+                      sched/match->compute-cluster (fn [_] fake-cc)]
+          (sched/launch-matched-tasks! matches nil nil nil nil nil))))))
 
 (deftest test-reconcile-tasks
   (let [conn (restore-fresh-database! "datomic:mem://test-reconcile-tasks")

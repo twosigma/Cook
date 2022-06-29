@@ -864,32 +864,58 @@
       (log/warn "Skipping a subset of matches because of rate-limit:" matches-throttled))
     matches-kept))
 
+(defn handle-launch-task-metrics
+  [matches count-txns pool-name compute-cluster]
+  (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
+        offers-matched (->> matches
+                            (mapcat :leases)
+                            (map :offer))
+        num-offers-matched (->> offers-matched
+                                (map (comp :value :id))
+                                distinct
+                                count)
+        user->num-jobs (->> matches
+                            (mapcat :task-metadata-seq)
+                            (map (comp cached-queries/job-ent->user :job :task-request))
+                            frequencies)]
+    (log-structured/info "Launching matched tasks"
+                         {:compute-cluster compute-cluster-name
+                          :number-offers-matched num-offers-matched
+                          :number-tasks count-txns
+                          :number-jobs-per-user (print-str user->num-jobs) ; don't treat the map as json
+                          :pool pool-name})
+    (meters/mark! scheduler-offer-matched num-offers-matched)
+    (histograms/update! number-offers-matched num-offers-matched)
+    (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) count-txns)
+    (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name compute-cluster)) count-txns)))
+
 (def kill-lock-timer-for-launch (timers/timer ["cook-mesos" "scheduler" "kill-lock-acquire-for-launch"]))
 
-(defn launch-matched-tasks!
-  "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db fenzo mesos-run-as-user pool-name]
-  (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
+(defn format-matches-for-structured-logging
+  [matches]
+  (for [{:keys [task-metadata-seq]} matches
+        {:keys [task-id task-request]} task-metadata-seq]
+    {:job-uuid (-> task-request (get-in [:job :job/uuid]) str)
+     :task-id task-id}))
+
+(defn launch-tasks-for-cluster
+  [compute-cluster matches pool-name conn fenzo]
+  (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
         task-txns (matches->task-txns matches)
-        kill-lock-timer-context (timers/start kill-lock-timer-for-launch)]
+        count-txns (count task-txns)
+        matches-for-logging (format-matches-for-structured-logging matches)
+        kill-lock-object (cc/kill-lock-object compute-cluster)]
     (log-structured/info "Writing tasks"
                          ; use print-str for the first 10 tasks so that we don't treat the map as json
-                         {:first-ten-tasks (print-str
-                                             (take
-                                               10
-                                               (for [{:keys [task-metadata-seq]} matches
-                                                     {:keys [task-id task-request]} task-metadata-seq]
-                                                 {:job-uuid (-> task-request (get-in [:job :job/uuid]) str)
-                                                  :task-id task-id})))
+                         {:first-ten-tasks (print-str (take 10 matches-for-logging))
+                          :compute-cluster compute-cluster-name
                           :pool pool-name
-                          :number-tasks (count task-txns)})
+                          :number-tasks count-txns})
     (timers/time!
       (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
-      ; Avoids a race. See docs for kill-lock-object.
       (try
-        (.. cc/kill-lock-object readLock lock)
-        ;; Determine lock acquisition time.
-        (.stop kill-lock-timer-context)
+        ; Avoids a race between launching tasks and killing tasks. See kill-lock-object docs for more info.
+        (.. kill-lock-object readLock lock)
         ;; Note that this transaction can fail if a job was scheduled
         ;; during a race. If that happens, then other jobs that should
         ;; be scheduled will not be eligible for rescheduling until
@@ -900,53 +926,45 @@
             conn
             (reduce into [] task-txns)
             (fn [e]
-              (log/warn e "In" pool-name ", transaction timed out, so these tasks might be present"
-                        "in Datomic without actually having been launched in Mesos" matches)
+              (log-structured/warn (print-str "Transaction timed out, so these tasks might be present"
+                                              "in Datomic without actually having been launched in compute cluster"
+                                              matches-for-logging)
+                                   {:compute-cluster compute-cluster-name
+                                    :pool pool-name}
+                                   e)
               (throw e))))
 
-        (let [offers-matched (->> matches
-                                  (mapcat :leases)
-                                  (map :offer))
-              num-offers-matched (->> offers-matched
-                                      (map (comp :value :id))
-                                      distinct
-                                      count)
-              user->num-jobs (->> matches
-                                  (mapcat :task-metadata-seq)
-                                  (map (comp cached-queries/job-ent->user :job :task-request))
-                                  frequencies)]
-          (log-structured/info "Launching matched tasks"
-                               {:number-offers-matched num-offers-matched
-                                :number-tasks (count task-txns)
-                                :number-jobs-per-user (print-str user->num-jobs) ; don't treat the map as json
-                                :pool pool-name})
-          (meters/mark! scheduler-offer-matched num-offers-matched)
-          (histograms/update! number-offers-matched num-offers-matched))
-        (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
+        (handle-launch-task-metrics matches count-txns pool-name compute-cluster)
 
         ;; Launching the matched tasks MUST happen after the above transaction in
         ;; order to allow a transaction failure (due to failed preconditions)
         ;; to block the launch
         (timers/time!
           (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
-          (->> (group-by match->compute-cluster matches)
-               (map
-                 (fn [[compute-cluster matches-in-compute-cluster]]
-                   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-                         _ (log-structured/info "Launching matched tasks for compute cluster"
-                                                {:pool pool-name :compute-cluster compute-cluster-name})
-                         launch-matches-in-compute-cluster!
-                         #(launch-matches! compute-cluster pool-name
-                                           matches-in-compute-cluster fenzo)]
-                     (doseq [match matches-in-compute-cluster]
-                       (timers/stop (-> match :leases first :offer :offer-match-timer)))
-                     (if (:mesos-config compute-cluster)
-                       (launch-matches-in-compute-cluster!)
-                       (future (launch-matches-in-compute-cluster!))))))
-               doall
-               (run! #(when (future? %) (deref %)))))
+          (let [_ (log-structured/info "Launching matched tasks for compute cluster"
+                                       {:pool pool-name :compute-cluster compute-cluster-name})]
+            (doseq [match matches]
+              (timers/stop (-> match :leases first :offer :offer-match-timer)))
+            (#(launch-matches! compute-cluster pool-name matches fenzo))))
         (finally
-          (.. cc/kill-lock-object readLock unlock))))))
+          (.. kill-lock-object readLock unlock)))))
+  )
+
+(defn launch-matched-tasks!
+  "Updates the state of matched tasks in the database and then launches them."
+  [matches conn db fenzo mesos-run-as-user pool-name]
+  (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
+        compute-cluster-to-matches-map (group-by match->compute-cluster matches)]
+    (->> compute-cluster-to-matches-map
+         (map
+           (fn [[compute-cluster matches-in-compute-cluster]]
+             ; vary behavior based on compute cluster type. Mesos clusters are single-threaded and
+             ; should not be launched with futures
+             (if (:mesos-config compute-cluster)
+               (launch-tasks-for-cluster compute-cluster matches-in-compute-cluster pool-name conn fenzo)
+               (future (launch-tasks-for-cluster compute-cluster matches-in-compute-cluster pool-name conn fenzo)))))
+         doall
+         (run! #(when (future? %) (deref %))))))
 
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
