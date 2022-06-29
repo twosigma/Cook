@@ -87,12 +87,17 @@ def run(args, plugins):
             metrics.initialize(config_map)
             # measure the number of times users specify each cluster, including when none is specified
             metrics.inc('command.%s.runs' % action, additional_tags={'cluster': (cluster or 'default')})
-            clusters = load_target_clusters(config_map, url, cluster)
             http.configure(config_map, plugins)
             cook.plugins.configure(plugins)
             args = {k: v for k, v in args.items() if v is not None}
             defaults = config_map.get('defaults')
             action_defaults = (defaults.get(action) if defaults else None) or {}
+            # load_target_clusters needs to be aware if there are any action-specific cluster defaults
+            if action_defaults:
+                # coalesce the defaults with cli flags overriding action config defaults
+                url = url or action_defaults.get("url", None)
+                cluster = cluster or action_defaults.get("cluster", None)
+            clusters = load_target_clusters(config_map, url=url, cluster=cluster)
             logging.debug('going to execute % action' % action)
             result = actions[action](clusters, deep_merge(action_defaults, args), config_path)
             logging.debug('result: %s' % result)
