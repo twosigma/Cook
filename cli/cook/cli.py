@@ -95,8 +95,8 @@ def run(args, plugins):
             # load_target_clusters needs to be aware if there are any action-specific cluster defaults
             if action_defaults:
                 # coalesce the defaults with cli flags overriding action config defaults
-                url = url or action_defaults.get("url", None)
-                cluster = cluster or action_defaults.get("cluster", None)
+                # using `pop` to remove the disallowed 'cluster' key
+                cluster = cluster or action_defaults.pop("cluster", None)
             clusters = load_target_clusters(config_map, url=url, cluster=cluster)
             logging.debug('going to execute % action' % action)
             result = actions[action](clusters, deep_merge(action_defaults, args), config_path)
