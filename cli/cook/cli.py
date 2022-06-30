@@ -77,6 +77,7 @@ def run(args, plugins):
     action = args.pop('action')
     config_path = args.pop('config')
     cluster = args.pop('cluster')
+    pool_name = args.get('pool-name')
     url = args.pop('url')
 
     if action is None:
@@ -93,10 +94,16 @@ def run(args, plugins):
             defaults = config_map.get('defaults')
             action_defaults = (defaults.get(action) if defaults else None) or {}
             # load_target_clusters needs to be aware if there are any action-specific cluster defaults
+            # We want to treat cluster & pool as a pair here, so if either is specified on the cli,
+            # we will override the defaults.
+            # Additionally, we must `pop` to remove the disallowed 'cluster' key, regardless of
+            # whether we use the action_defaults or the cli flags
             if action_defaults:
-                # coalesce the defaults with cli flags overriding action config defaults
-                # using `pop` to remove the disallowed 'cluster' key
-                cluster = cluster or action_defaults.pop("cluster", None)
+                action_default_cluster = action_defaults.pop("cluster", None)
+                if cluster or pool_name:
+                    action_defaults.pop("pool-name", None)
+                else:
+                    cluster = action_default_cluster
             clusters = load_target_clusters(config_map, url=url, cluster=cluster)
             logging.debug('going to execute % action' % action)
             result = actions[action](clusters, deep_merge(action_defaults, args), config_path)

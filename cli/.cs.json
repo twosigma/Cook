@@ -4,8 +4,7 @@
       "mem": 128,
       "cpus": 1,
       "max-retries": 1,
-      "cluster": "dev1",
-      "pool-name": "a-pool"
+      "cluster": "dev1"
     }
   },
   "clusters": [
