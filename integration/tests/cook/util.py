@@ -816,6 +816,9 @@ def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_m
     `query` is a thunk (nullary callable) that may be called multiple times.
     `predicate` is a unary callable that takes the result value of `query`
     and returns True if the condition is met, or False otherwise.
+    
+    The retry will stop if either query or predicate raise a non-RuntimeError.
+
     See `wait_for_job` for an example of using this method.
     """
 
@@ -841,7 +844,7 @@ def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_m
             details = final_response.content
         except AttributeError:
             details = str(final_response)
-        logger.info(f"Timeout exceeded waiting for condition. Details: {details}")
+        logger.info(f"Timeout exceeded or error waiting for condition. Details: {details}")
         raise
 
 
