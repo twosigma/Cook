@@ -425,7 +425,7 @@ class MultiUserCookTest(util.CookTest):
                     # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was
                     # actually killed
                     if instance.get('end_time') is not None:
-                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get('preempted?'):
+                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get('preempted'):
                             return True
                         else:
                             # If the instance has an end_time but was not preempted, it means the preemption
