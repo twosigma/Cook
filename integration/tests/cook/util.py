@@ -826,7 +826,8 @@ def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_m
     def _retry_if_not_fail_on_error(exception):
         if fail_on_error:
             return isinstance(exception, RuntimeError)
-        else: True
+        else: 
+            return True
 
     @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms, retry_on_exception=_retry_if_not_fail_on_error)
     def wait_until_inner():
