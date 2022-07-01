@@ -662,6 +662,7 @@ class CookTest(util.CookTest):
         self.assertEqual(80, instance['progress'], message)
         self.assertEqual('80%', instance['progress_message'], message)
 
+    @unittest.skipUnless(util.is_job_progress_supported(), 'Test depends on progress reporting')
     def test_progress_update_rest(self):
         job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(201, resp.status_code, msg=resp.content)
