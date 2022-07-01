@@ -529,7 +529,7 @@
        ;; all over the place.
       (let [job-eid (:db/id (:job/_instance task-ent))
             task-eid (:db/id task-ent)]
-        [[:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
+        [[:generic/ensure-some-v2 task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
          [:generic/atomic-inc job-eid :job/preemptions 1]
           ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
           ;; transaction; see the comment in the definition of :instance/update-state for more details
