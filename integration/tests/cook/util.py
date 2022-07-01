@@ -819,7 +819,10 @@ def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_m
     See `wait_for_job` for an example of using this method.
     """
 
-    @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms)
+    def _retry_if_runtime_error(exception):
+        return isinstance(exception, RuntimeError)
+
+    @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms, retry_on_exception=_retry_if_runtime_error)
     def wait_until_inner():
         response = query()
         if not predicate(response):
