@@ -430,6 +430,9 @@ class MultiUserCookTest(util.CookTest):
                         else:
                             # If the instance has an end_time but was not preempted, it means the preemption
                             # failed. In this case, the job is killed but not correctly marked as preempted.
+                            # We set fail_on_error to true in the wait_until utility method. This means the 
+                            # resulting AssertionError will properly fail the test and not wait to fail at
+                            # the end of the timeout.
                             self.fail(f'Instance failed but was not marked as preempted: {instance}')
 
                 self.logger.info(f'Job has not been preempted: {job}')
@@ -437,7 +440,7 @@ class MultiUserCookTest(util.CookTest):
 
             max_wait_ms = util.rebalancer_interval_seconds() * 1000 * 2.5
             self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
-            util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
+            util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000, fail_on_error=True)
         finally:
             with self.user_factory.admin():
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)

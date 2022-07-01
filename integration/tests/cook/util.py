@@ -810,22 +810,25 @@ def load_instance(cook_url, instance_uuid, assert_response=True):
     return load_resource(cook_url, 'instances', instance_uuid, assert_response)
 
 
-def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS):
+def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS, fail_on_error=False):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
     `predicate` is a unary callable that takes the result value of `query`
     and returns True if the condition is met, or False otherwise.
-    
-    The retry will stop if either query or predicate raise a non-RuntimeError.
+
+    This will retry until timedout or until a non-RuntimeError is thrown 
+    when `fail_on_error` is true.
 
     See `wait_for_job` for an example of using this method.
     """
 
-    def _retry_if_runtime_error(exception):
-        return isinstance(exception, RuntimeError)
+    def _retry_if_not_fail_on_error(exception):
+        if fail_on_error:
+            return isinstance(exception, RuntimeError)
+        else: True
 
-    @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms, retry_on_exception=_retry_if_runtime_error)
+    @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms, retry_on_exception=_retry_if_not_fail_on_error)
     def wait_until_inner():
         response = query()
         if not predicate(response):
