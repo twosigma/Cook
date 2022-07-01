@@ -29,7 +29,8 @@ class MultiCookCliTest(unittest.TestCase):
 
     def __two_cluster_config(self):
         return {'clusters': [{'name': 'cook1', 'url': self.cook_url_1},
-                             {'name': 'cook2', 'url': self.cook_url_2}]}
+                             {'name': 'cook2', 'url': self.cook_url_2}],
+                'default': {'submit': {'cluster': '', 'pool-name': '', 'url': ''}}}
 
     def test_federated_show(self):
         # Submit to cluster #1
@@ -147,7 +148,8 @@ class MultiCookCliTest(unittest.TestCase):
     def test_no_matching_data_error_shows_only_cluster_of_interest(self):
         name = uuid.uuid4()
         config = {'clusters': [{'name': 'FOO', 'url': f'{self.cook_url_1}'},
-                               {'name': 'BAR', 'url': f'{self.cook_url_2}'}]}
+                               {'name': 'BAR', 'url': f'{self.cook_url_2}'}],
+                  'defaults': {'submit': {'cluster': '', 'pool-name': '', 'url': ''}}}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path}'
             cp, uuids = cli.submit('ls', flags=flags, submit_flags=f'--name {name}')

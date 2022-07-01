@@ -1729,7 +1729,8 @@ if __name__ == '__main__':
         self.assertEqual(1, len(groups))
 
     def test_entity_refs_case_insensitive(self):
-        config = {'clusters': [{'name': 'Foo', 'url': self.cook_url}]}
+        config = {'clusters': [{'name': 'Foo', 'url': self.cook_url}],
+                  'defaults': {'submit': {'cluster': '', 'pool-name': '', 'url': ''}}}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path}'
             cp, uuids = cli.submit('ls', flags=flags)
@@ -1775,7 +1776,8 @@ if __name__ == '__main__':
         self.assertIn(instance_uuid_2, (i['task_id'] for i, _ in instance_job_pairs))
 
     def test_entity_refs_trailing_slash_on_cluster(self):
-        config = {'clusters': [{'name': 'Foo', 'url': f'{self.cook_url}/'}]}
+        config = {'clusters': [{'name': 'Foo', 'url': self.cook_url}],
+                  'defaults': {'submit': {'cluster': '', 'pool-name': '', 'url': ''}}}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path}'
             cp, uuids = cli.submit('ls', flags=flags)
@@ -2228,7 +2230,8 @@ if __name__ == '__main__':
         self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
         config = {'clusters': [{'name': 'foo', 'url': self.cook_url},
-                               {'name': 'bar', 'url': 'http://localhost:65535'}]}
+                               {'name': 'bar', 'url': 'http://localhost:65535'}],
+                  'defaults': {'submit': {'cluster': '', 'pool-name': '', 'url': ''}}}
         with cli.temp_config_file(config) as path:
             flags = f'--config {path}'
             cp, jobs = cli.jobs_json(flags=flags, jobs_flags=f'--name {name} --all --user {user}')
