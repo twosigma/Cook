@@ -465,28 +465,81 @@
         (select-keys [:db/id :instance/task-id])
         (assoc :job (prep-job-ent-for-printing job-ent)))))
 
+(defmacro swallow-exceptions [& body]
+  `(try ~@body (catch Exception e# (log/warn e# "swallowed"))))
+
 (defn transact-preemption!
   "Transacts the rebalancer preemption for the given task-ent"
   [db conn pool-name task-ent]
+  (log/info "ensure" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]])))
+  (log/info "ensure-some1" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
+        [:generic/ensure-some1 task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]])))
+  (log/info "ensure-some2" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure-some1 task-eid :instance/status #{}]])))
+  (log/info "ensure-some3" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure-some1 task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]])))
+  (log/info "ensure-some4" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure-some2 task-eid :instance/status #{}]])))
+  (log/info "ensure-some5" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure-some3 task-eid :instance/status #{}]])))
+  (log/info "ensure-some6" {:to-preempt (prep-task-ent-for-printing task-ent)})
+  (swallow-exceptions
+   @(d/transact
+     conn
+     (let [job-eid (:db/id (:job/_instance task-ent))
+           task-eid (:db/id task-ent)]
+       [[:generic/ensure-some3 task-eid :instance/status #{}]])))
   (try
     @(d/transact
-       conn
+      conn
        ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
        ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
        ;; all over the place.
-       (let [job-eid (:db/id (:job/_instance task-ent))
-             task-eid (:db/id task-ent)]
-         [[:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
-          [:generic/atomic-inc job-eid :job/preemptions 1]
+      (let [job-eid (:db/id (:job/_instance task-ent))
+            task-eid (:db/id task-ent)]
+        [[:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
+         [:generic/atomic-inc job-eid :job/preemptions 1]
           ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
           ;; transaction; see the comment in the definition of :instance/update-state for more details
-          [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
-          [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
-          [:db/add task-eid :instance/preempted? true]]))
+         [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
+         [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
+         [:db/add task-eid :instance/preempted? true]]))
     (catch Throwable e
       (log/warn
-        e "In" pool-name "pool, failed to transact preemption"
-        {:to-preempt (prep-task-ent-for-printing task-ent)}))))
+       e "In" pool-name "pool, failed to transact preemption"
+       {:to-preempt (prep-task-ent-for-printing task-ent)}))))
 
 (defn rebalance!
   [db conn agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
