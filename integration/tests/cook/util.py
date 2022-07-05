@@ -817,8 +817,8 @@ def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_m
     `predicate` is a unary callable that takes the result value of `query`
     and returns True if the condition is met, or False otherwise.
 
-    This will retry until timedout or until a non-RuntimeError is thrown 
-    when `fail_on_error` is true.
+    If `fail_on_error` is true and a non-RuntimeError is thrown, the method 
+    will stop retrying.
 
     See `wait_for_job` for an example of using this method.
     """

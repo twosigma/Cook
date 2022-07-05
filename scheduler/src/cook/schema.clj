@@ -1134,7 +1134,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                        (throw (ex-info "Fail to ensure attribute" {:entity e
                                                                    :attribute a
                                                                    :expected v}))))}}
-   
+
    {:db/id (d/tempid :db.part/user)
     :db/ident :generic/ensure-some
     :db/doc "Ensures an attribute of an entity has at least one of the expected values. Throws exception otherwise"
@@ -1144,8 +1144,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                    :code
                    (let [db (mt/filter-committed db)]
                      (if (not-every? nil? (flatten
-                                  (for [v values]
-                                    (seq (d/datoms db :eavt e a v)))))
+                                           (for [v values]
+                                             (seq (d/datoms db :eavt e a v)))))
                        nil
                        (throw (ex-info "Fail to ensure attribute" {:entity e
                                                                    :attribute a
@@ -1400,14 +1400,14 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                         oldvalues (into #{} (map :v) (datomic.api/datoms db :eavt eid aid))]
                     (-> []
                         (into (comp
-                                (remove newvalues)
-                                (map (if is-component
-                                       #(do [:db.fn/retractEntity %])
-                                       #(do [:db/retract eid aid %]))))
+                               (remove newvalues)
+                               (map (if is-component
+                                      #(do [:db.fn/retractEntity %])
+                                      #(do [:db/retract eid aid %]))))
                               oldvalues)
                         (into (comp
-                                (remove oldvalues)
-                                (map #(do [:db/add eid aid %])))
+                               (remove oldvalues)
+                               (map #(do [:db/add eid aid %])))
                               newvalues)))}}])
 
 (def reason-entities
