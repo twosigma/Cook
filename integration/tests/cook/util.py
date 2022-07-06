@@ -18,7 +18,6 @@ from urllib.parse import urlencode, urlparse
 import numpy
 import requests
 from retrying import retry
-
 from tests.cook import mesos
 
 logger = logging.getLogger(__name__)
@@ -811,16 +810,26 @@ def load_instance(cook_url, instance_uuid, assert_response=True):
     return load_resource(cook_url, 'instances', instance_uuid, assert_response)
 
 
-def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS):
+def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS, fail_on_error=False):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
     `predicate` is a unary callable that takes the result value of `query`
     and returns True if the condition is met, or False otherwise.
+
+    If `fail_on_error` is true and a non-RuntimeError is thrown, the method 
+    will stop retrying.
+
     See `wait_for_job` for an example of using this method.
     """
 
-    @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms)
+    def _retry_if_not_fail_on_error(exception):
+        if fail_on_error:
+            return isinstance(exception, RuntimeError)
+        else: 
+            return True
+
+    @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms, retry_on_exception=_retry_if_not_fail_on_error)
     def wait_until_inner():
         response = query()
         if not predicate(response):
@@ -839,7 +848,7 @@ def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_m
             details = final_response.content
         except AttributeError:
             details = str(final_response)
-        logger.info(f"Timeout exceeded waiting for condition. Details: {details}")
+        logger.info(f"Timeout exceeded or error waiting for condition. Details: {details}")
         raise
 
 

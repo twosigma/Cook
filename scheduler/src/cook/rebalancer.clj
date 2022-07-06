@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.rebalancer
-  (:require [chime :refer [chime-at]]
-            [clojure.core.async :as async]
+  (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
@@ -28,7 +27,7 @@
             [cook.scheduler.dru :as dru]
             [cook.task :as task]
             [cook.tools :as util]
-            [datomic.api :as d :refer [q]]
+            [datomic.api :as d]
             [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
@@ -56,12 +55,8 @@
 ;;;
 ;;; Within each cycle, the rebalancer takes the first n tasks in a global DRU queue, it then 'tries' to see if they can
 ;;; (and should) preempt any existing running tasks. Only tasks over the share are eligible to be preempted. We only do
-;;; the preemption if the DRU change is sufficiently large. If there is a set of running tasks that satisfy the criteria, they are killed and the host is reserved to launch the waiting job.
-;;; be killed. 
-;;;
-;;; At the start of a cycle, Rebalancer initializes its internal state. Then, for each iteration in a given cycle,
-;;; Rebalancer processes a pending job and tries to make room for it by finding a task to preempt and updates its
-;;; internal state if such preemption is found.
+;;; the preemption if the DRU change is sufficiently large. If there is a set of running tasks that satisfy the 
+;;; criteria, they are killed and the host is reserved to launch the waiting job.
 ;;;
 ;;; Preemption Principle
 ;;; Rebalancer uses a score-based preemption algorithm.
@@ -472,26 +467,26 @@
 
 (defn transact-preemption!
   "Transacts the rebalancer preemption for the given task-ent"
-  [db conn pool-name task-ent]
+  [db conn pool-name task-ent] 
   (try
     @(d/transact
-       conn
+      conn
        ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
        ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
        ;; all over the place.
-       (let [job-eid (:db/id (:job/_instance task-ent))
-             task-eid (:db/id task-ent)]
-         [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
-          [:generic/atomic-inc job-eid :job/preemptions 1]
+      (let [job-eid (:db/id (:job/_instance task-ent))
+            task-eid (:db/id task-ent)]
+        [[:generic/ensure-some task-eid :instance/status #{(d/entid db :instance.status/running) (d/entid db :instance.status/unknown)}]
+         [:generic/atomic-inc job-eid :job/preemptions 1]
           ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
           ;; transaction; see the comment in the definition of :instance/update-state for more details
-          [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
-          [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
-          [:db/add task-eid :instance/preempted? true]]))
+         [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
+         [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
+         [:db/add task-eid :instance/preempted? true]]))
     (catch Throwable e
       (log/warn
-        e "In" pool-name "pool, failed to transact preemption"
-        {:to-preempt (prep-task-ent-for-printing task-ent)}))))
+       e "In" pool-name "pool, failed to transact preemption"
+       {:to-preempt (prep-task-ent-for-printing task-ent)}))))
 
 (defn rebalance!
   [db conn agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]

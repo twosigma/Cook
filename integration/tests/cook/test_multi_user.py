@@ -9,8 +9,7 @@ import uuid
 
 import pytest
 from retrying import retry
-
-from tests.cook import mesos, util, reasons
+from tests.cook import mesos, reasons, util
 
 
 @pytest.mark.multi_user
@@ -425,15 +424,23 @@ class MultiUserCookTest(util.CookTest):
                     self.logger.debug(f'Checking if instance was preempted: {instance}')
                     # Rebalancing marks the instance failed eagerly, so also wait for end_time to ensure it was
                     # actually killed
-                    if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get(
-                            'end_time') is not None:
-                        return True
+                    if instance.get('end_time') is not None:
+                        if instance.get('reason_string') == 'Preempted by rebalancer' and instance.get('preempted'):
+                            return True
+                        else:
+                            # If the instance has an end_time but was not preempted, it means the preemption
+                            # failed. In this case, the job is killed but not correctly marked as preempted.
+                            # We set fail_on_error to true in the wait_until utility method. This means the 
+                            # resulting AssertionError will properly fail the test and not wait to fail at
+                            # the end of the timeout.
+                            self.fail(f'Instance failed but was not marked as preempted: {instance}')
+
                 self.logger.info(f'Job has not been preempted: {job}')
                 return False
 
             max_wait_ms = util.rebalancer_interval_seconds() * 1000 * 2.5
             self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
-            util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
+            util.wait_until(low_priority_job, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000, fail_on_error=True)
         finally:
             with self.user_factory.admin():
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
