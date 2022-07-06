@@ -23,7 +23,8 @@
             [datomic.api :as d]
             [metrics.counters :as counters]
             [metrics.meters :as meters]
-            [metrics.timers :as timers])
+            [metrics.timers :as timers]
+            [opentracing-clj.core :as tracing])
   (:import (com.google.auth.oauth2 GoogleCredentials)
            (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator)
            (io.kubernetes.client.openapi ApiClient)
@@ -344,21 +345,23 @@
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
-      (log-structured/info "Launching tasks"
-                           {:pool pool-name
-                            :compute-cluster name
-                            :number-matches (count matches)
-                            :number-tasks (count task-metadata-seq)})
-      (let [futures
-            (doall
-              (map (fn [task-metadata]
-                     (.submit
-                       controller-executor-service
-                       ^Callable (fn []
-                                   (launch-task! this task-metadata)
-                                   (process-task-post-launch-fn task-metadata))))
-                   task-metadata-seq))]
-        (run! deref futures))))
+      (tracing/with-span [s {:name "launch-tasks" :tags
+                             {:pool pool-name :compute-cluster name :number-matches (count matches) :number-tasks (count task-metadata-seq)}}]
+        (log-structured/info "Launching tasks"
+                             {:pool pool-name
+                              :compute-cluster name
+                              :number-matches (count matches)
+                              :number-tasks (count task-metadata-seq)})
+        (let [futures
+              (doall
+                (map (fn [task-metadata]
+                       (.submit
+                         controller-executor-service
+                         ^Callable (fn []
+                                     (launch-task! this task-metadata)
+                                     (process-task-post-launch-fn task-metadata))))
+                     task-metadata-seq))]
+          (run! deref futures)))))
 
   (kill-task [this task-id]
     (let [state @state-atom]
