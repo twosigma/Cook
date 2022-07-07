@@ -846,7 +846,7 @@
 (defn filter-matches-for-ratelimit
   "Given a set of matches, determine which compute clusters are beyond the rate limit and filter matches in those compute clusters out."
   [matches]
-  (tracing/with-span [s {:name "filter-matches-for-ratelimit" :tags {:component tracing-component-tag}}]
+  (tracing/with-span [s {:name "scheduler.filter-matches-for-ratelimit" :tags {:component tracing-component-tag}}]
     (let [augmented-matches (->> matches
                                  (group-by match->compute-cluster)
                                  (map
@@ -923,7 +923,7 @@
         count-txns (count task-txns)
         matches-for-logging (format-matches-for-structured-logging matches)
         kill-lock-object (cc/kill-lock-object compute-cluster)]
-    (tracing/with-span [s {:name "launch-tasks-for-cluster"
+    (tracing/with-span [s {:name "scheduler.launch-tasks-for-cluster"
                            :tags {:pool pool-name :compute-cluster compute-cluster-name :number-tasks count-txns
                                   :component tracing-component-tag}}]
       (log-structured/info "Writing tasks"
@@ -974,7 +974,7 @@
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db fenzo mesos-run-as-user pool-name]
-  (tracing/with-span [s {:name "launch-matched-tasks" :tags {:pool pool-name :component tracing-component-tag}}]
+  (tracing/with-span [s {:name "scheduler.launch-matched-tasks" :tags {:pool pool-name :component tracing-component-tag}}]
     (let [matches (map #(update-match-with-task-metadata-seq % db mesos-run-as-user) matches)
           compute-cluster-to-matches-map (group-by match->compute-cluster matches)]
       (->> compute-cluster-to-matches-map
@@ -1046,7 +1046,7 @@
   - There is at least one pending job
   - There is at least one compute cluster configured to do autoscaling"
   [pending-jobs-for-autoscaling pool-name compute-clusters job->acceptable-compute-clusters-fn]
-  (tracing/with-span [s {:name "trigger-autoscaling" :tags {:component tracing-component-tag}}]
+  (tracing/with-span [s {:name "scheduler.trigger-autoscaling" :tags {:component tracing-component-tag}}]
     (timers/time!
       (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
       (try
@@ -1136,7 +1136,7 @@
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
-    (tracing/with-span [s {:name "handle-resource-offers" :tags {:pool pool-name :tags {:component tracing-component-tag}}}]
+    (tracing/with-span [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :tags {:component tracing-component-tag}}}]
       (timers/time!
         (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
         (try
