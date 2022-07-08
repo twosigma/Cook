@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.61.1] - 2022-07-28
+### Added 
+- Opentracing for the match cycle logic, from @samincheva
+
+### Fixed 
+- Allow preemptions for tasks with unknown status, from @ahaysx
+- Fix rebalancer integration test to handle failures better, from @ahaysx
+
 ## [1.61.0] - 2022-06-22
 ### Changed
 - Moved the global launch/kill ordering lock to be per compute-cluster, from @laurameng
