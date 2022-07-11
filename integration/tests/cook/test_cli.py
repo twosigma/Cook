@@ -2278,7 +2278,15 @@ if __name__ == '__main__':
                 self.assertEqual(pool_name, jobs[0]['pool'])
             else:
                 self.assertEqual(1, cp.returncode, cp.stderr)
-                self.assertIn(f'{pool_name} is not accepting job submissions', cli.stderr(cp))
+                stderr = cli.stderr(cp)
+                if f'{pool_name} is not accepting job submissions' in stderr:
+                    # Typically we get a message that the pool is not accepting jobs
+                    pass
+                elif "exceeds quota" in stderr:
+                    # It's possible the user quota for the pool was set to 0, in which case we get a different message
+                    pass
+                else:
+                    self.fail(f"Got unexpected error: {stderr}")
         # Try submitting to a pool that doesn't exist
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {util.make_temporal_uuid()}')
         self.assertEqual(1, cp.returncode, cp.stderr)

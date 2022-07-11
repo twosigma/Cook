@@ -2423,7 +2423,9 @@ class CookTest(util.CookTest):
                 job = util.load_job(self.cook_url, job_uuid)
                 self.assertEqual(pool_name, job['pool'])
             else:
-                self.assertEqual(resp.status_code, 400, msg=resp.content)
+                # We expect a 400 when submitting to a disabled pool, but it's also possible that
+                # the quota for the pool was to 0, in which case we'd get a 422
+                self.assertTrue(resp.status_code in [400, 422], msg=resp.content)
 
         # Try submitting to a pool that doesn't exist
         job_uuid, resp = util.submit_job(self.cook_url, pool=str(util.make_temporal_uuid()))
