@@ -1026,22 +1026,24 @@
   compute-cluster->jobs map. That is the API any future
   improvements need to stick to."
   [autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
-  (let [compute-cluster->jobs
-        (group-by
-          (fn choose-compute-cluster-for-autoscaling
-            [{:keys [job/uuid] :as job}]
-            (let [preferred-compute-clusters
-                  (job->acceptable-compute-clusters-fn job compute-clusters)]
-              (if (empty? preferred-compute-clusters)
-                :no-acceptable-compute-cluster
-                (nth preferred-compute-clusters
-                     (-> uuid hash (mod (count preferred-compute-clusters)))))))
-          autoscalable-jobs)]
-    (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
-      (log-structured/info "There are jobs with no acceptable compute cluster for autoscaling"
-                           {:pool pool-name
-                            :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
-    (dissoc compute-cluster->jobs :no-acceptable-compute-cluster)))
+  (tracing/with-span [s {:name "scheduler.distribute-jobs-to-compute-cluster"
+                         :tags {:pool pool-name :component tracing-component-tag}}]
+    (let [compute-cluster->jobs
+          (group-by
+            (fn choose-compute-cluster-for-autoscaling
+              [{:keys [job/uuid] :as job}]
+              (let [preferred-compute-clusters
+                    (job->acceptable-compute-clusters-fn job compute-clusters)]
+                (if (empty? preferred-compute-clusters)
+                  :no-acceptable-compute-cluster
+                  (nth preferred-compute-clusters
+                       (-> uuid hash (mod (count preferred-compute-clusters)))))))
+            autoscalable-jobs)]
+      (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
+        (log-structured/info "There are jobs with no acceptable compute cluster for autoscaling"
+                             {:pool pool-name
+                              :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
+      (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
 (defn trigger-autoscaling!
   "Autoscales the given pool to satisfy the given pending jobs, if:
@@ -1315,11 +1317,12 @@
                   ;; trigger autoscaling beyond what users have quota to actually run
                   autoscalable-jobs (tracing/with-span [s {:name "scheduler.handle-resource-offers.generate-autoscalable-jobs"
                                                            :tags {:pool pool-name :component tracing-component-tag}}]
-                                                       (doall (->> pool-name
-                                                                   (get @pool-name->pending-jobs-atom)
-                                                                   (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                                                                                        user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
-                                                                   (take max-jobs-for-autoscaling-scaled))))
+                                                       (->> pool-name
+                                                            (get @pool-name->pending-jobs-atom)
+                                                            (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
+                                                                                                 user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                                            (take max-jobs-for-autoscaling-scaled)
+                                                            (doall)))
                   filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
               ; When we have at least a minimum number of jobs being looked at, metric which fraction have matched.
               ; This lets us measure how well we're matching on existing resources.
