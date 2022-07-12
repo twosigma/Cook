@@ -685,48 +685,50 @@
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db pool-name]
-  (timers/time!
-    generate-user-usage-map-duration
-    (->> (tools/get-running-task-ents unfiltered-db)
-         (map :job/_instance)
-         (remove #(not= pool-name (cached-queries/job->pool-name %)))
-         (group-by :job/user)
-         (pc/map-vals (fn [jobs]
-                        (->> jobs
-                             (map tools/job->usage)
-                             (reduce (partial merge-with +))))))))
+  (tracing/with-span [s {:name "scheduler.generate-user-usage-map"
+                         :tags {:pool pool-name :component tracing-component-tag}}]
+    (timers/time!
+      generate-user-usage-map-duration
+      (->> (tools/get-running-task-ents unfiltered-db)
+           (map :job/_instance)
+           (remove #(not= pool-name (cached-queries/job->pool-name %)))
+           (group-by :job/user)
+           (pc/map-vals (fn [jobs]
+                          (->> jobs
+                               (map tools/job->usage)
+                               (reduce (partial merge-with +)))))))))
 
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
-  (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable" :num-pending-jobs pending-jobs
-                         :tags {:pool pool-name :component tracing-component-tag}}])
-  (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
-                        {:pool pool-name :num-pending-jobs (count pending-jobs)})
-  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
-        user->rate-limit-count (atom {})
-        user->passed-count (atom {})
-        considerable-jobs
-        (->> pending-jobs
-             (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
-                                                  user->quota user->usage
-                                                  (tools/global-pool-quota (config/pool-quotas) pool-name))
-             (filter (fn [job] (tools/job-allowed-to-start? db job)))
-             (filter launch-plugin/filter-job-launches)
-             (take num-considerable)
-             ; Force this to be taken eagerly so that the log line is accurate.
-             (doall))]
-    (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-    (log-structured/info "Job launch rate-limiting"
-              {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-               :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-               :user->rate-limit-count @user->rate-limit-count
-               :total-passed-count (->> @user->passed-count vals (reduce +))
-               :user->passed-count @user->passed-count
-               :pool pool-name})
-    (tracing/set-tags {:num-considerable (count considerable-jobs)})
-    considerable-jobs))
+  (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable"
+                         :tags {:pool pool-name :component tracing-component-tag :num-pending-jobs pending-jobs}}]
+    (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
+                          {:pool pool-name :num-pending-jobs (count pending-jobs)})
+    (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+          user->rate-limit-count (atom {})
+          user->passed-count (atom {})
+          considerable-jobs
+          (->> pending-jobs
+               (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
+                                                    user->quota user->usage
+                                                    (tools/global-pool-quota (config/pool-quotas) pool-name))
+               (filter (fn [job] (tools/job-allowed-to-start? db job)))
+               (filter launch-plugin/filter-job-launches)
+               (take num-considerable)
+               ; Force this to be taken eagerly so that the log line is accurate.
+               (doall))]
+      (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+      (log-structured/info "Job launch rate-limiting"
+                {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                 :user->rate-limit-count @user->rate-limit-count
+                 :total-passed-count (->> @user->passed-count vals (reduce +))
+                 :user->passed-count @user->passed-count
+                 :pool pool-name})
+      (tracing/set-tags {:num-considerable (count considerable-jobs)})
+      considerable-jobs)))
 
 
 (defn matches->jobs
@@ -1024,22 +1026,24 @@
   compute-cluster->jobs map. That is the API any future
   improvements need to stick to."
   [autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
-  (let [compute-cluster->jobs
-        (group-by
-          (fn choose-compute-cluster-for-autoscaling
-            [{:keys [job/uuid] :as job}]
-            (let [preferred-compute-clusters
-                  (job->acceptable-compute-clusters-fn job compute-clusters)]
-              (if (empty? preferred-compute-clusters)
-                :no-acceptable-compute-cluster
-                (nth preferred-compute-clusters
-                     (-> uuid hash (mod (count preferred-compute-clusters)))))))
-          autoscalable-jobs)]
-    (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
-      (log-structured/info "There are jobs with no acceptable compute cluster for autoscaling"
-                           {:pool pool-name
-                            :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
-    (dissoc compute-cluster->jobs :no-acceptable-compute-cluster)))
+  (tracing/with-span [s {:name "scheduler.distribute-jobs-to-compute-cluster"
+                         :tags {:pool pool-name :component tracing-component-tag}}]
+    (let [compute-cluster->jobs
+          (group-by
+            (fn choose-compute-cluster-for-autoscaling
+              [{:keys [job/uuid] :as job}]
+              (let [preferred-compute-clusters
+                    (job->acceptable-compute-clusters-fn job compute-clusters)]
+                (if (empty? preferred-compute-clusters)
+                  :no-acceptable-compute-cluster
+                  (nth preferred-compute-clusters
+                       (-> uuid hash (mod (count preferred-compute-clusters)))))))
+            autoscalable-jobs)]
+      (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
+        (log-structured/info "There are jobs with no acceptable compute cluster for autoscaling"
+                             {:pool pool-name
+                              :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
+      (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
 (defn trigger-autoscaling!
   "Autoscales the given pool to satisfy the given pending jobs, if:
@@ -1136,7 +1140,7 @@
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
-    (tracing/with-span [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :tags {:component tracing-component-tag}}}]
+    (tracing/with-span [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :component tracing-component-tag}}]
       (timers/time!
         (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
         (try
@@ -1311,11 +1315,14 @@
                                                       (max number-unmatched-jobs)) ; Autoscale at least the pods that failed to match.
                   ;; We need to filter pending jobs based on quota so that we don't
                   ;; trigger autoscaling beyond what users have quota to actually run
-                  autoscalable-jobs (->> pool-name
-                                         (get @pool-name->pending-jobs-atom)
-                                         (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                                                              user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
-                                         (take max-jobs-for-autoscaling-scaled))
+                  autoscalable-jobs (tracing/with-span [s {:name "scheduler.handle-resource-offers.generate-autoscalable-jobs"
+                                                           :tags {:pool pool-name :component tracing-component-tag}}]
+                                                       (->> pool-name
+                                                            (get @pool-name->pending-jobs-atom)
+                                                            (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
+                                                                                                 user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                                            (take max-jobs-for-autoscaling-scaled)
+                                                            (doall)))
                   filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
               ; When we have at least a minimum number of jobs being looked at, metric which fraction have matched.
               ; This lets us measure how well we're matching on existing resources.
@@ -1405,7 +1412,8 @@
                           ;;  2. Once the above two items are addressed, user->usage should always correctly
                           ;;     reflect *Cook*'s understanding of the state of the world at this point.
                           ;;     When this happens, users should never exceed their quota
-                          user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
+                          user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span
+                                                                        (generate-user-usage-map (d/db conn) pool-name)))
                           ;; Try to clear the channel
                           ;; Merge the pending offers from all compute clusters.
                           compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
@@ -1421,20 +1429,25 @@
                                                                                                    t)
                                                                              (list))))
                                                                        compute-clusters)))
-                          _ (doseq [offer offers
-                                    :let [slave-id (-> offer :slave-id :value)]]
-                              ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
-                              ; Computing get-offer-attr-map is pretty expensive because it includes calculating
-                              ; currently running pods, so we have to union the set of pods k8s says are there and
-                              ; the set of pods we're trying to put on the node. Even though it's not used by
-                              ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
-                              ; and only store if it is a new node.
-                              (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
-                                (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer))))
+                          _ (tracing/with-span [s {:name "scheduler.offer-handler.cache-offers-for-rebalancer"
+                                                   :tags {:pool pool-name :component tracing-component-tag}}]
+                                               (doseq [offer offers
+                                                       :let [slave-id (-> offer :slave-id :value)]]
+                                                 ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
+                                                 ; Computing get-offer-attr-map is pretty expensive because it includes calculating
+                                                 ; currently running pods, so we have to union the set of pods k8s says are there and
+                                                 ; the set of pods we're trying to put on the node. Even though it's not used by
+                                                 ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
+                                                 ; and only store if it is a new node.
+                                                 (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
+                                                   (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
                           using-pools? (not (nil? (config/default-pool)))
                           user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
+                          user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
+                                                             :tags {:pool pool-name :component tracing-component-tag}}]
+                                                         @user->usage-future)
                           matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
-                                                                 mesos-run-as-user @user->usage-future user->quota
+                                                                 mesos-run-as-user user->usage user->quota
                                                                  num-considerable offers
                                                                  rebalancer-reservation-atom pool-name compute-clusters
                                                                  job->acceptable-compute-clusters-fn)]
