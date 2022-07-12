@@ -1390,7 +1390,7 @@
         (timers/time!
           (timers/timer (metric-title "match-jobs-event" pool-name))
           (tracing/with-span [s {:name "scheduler.offer-handler.match-jobs"
-                                 :tags {:component tracing-component-tag}}]
+                                 :tags {:pool pool-name :component tracing-component-tag}}]
             (let [num-considerable @fenzo-num-considerable-atom
                   next-considerable
                   (try
