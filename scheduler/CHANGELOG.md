@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.61.2] - 2022-07-12
+### Changed
+- Add more opentracing spans to the match cycle, @samincheva
+
+### Fixed
+- Disabled pools integration tests handle 0 quota better, from @samincheva
+
 ## [1.61.1] - 2022-07-28
 ### Added 
 - Opentracing for the match cycle logic, from @samincheva
