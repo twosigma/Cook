@@ -37,11 +37,8 @@
             [datomic.api :as d :refer [q]]
             [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer [map-keys map-vals]]
-            [opentracing-clj.core :as tracing])
+            [plumbing.core :as pc :refer [map-keys map-vals]])
   (:import (java.util Date)))
-
-(def tracing-component-tag "tools")
 
 (defn retrieve-system-ids
   "Executes a shell command to retrieve the user/group id for the specified user"
