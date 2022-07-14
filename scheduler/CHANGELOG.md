@@ -4,9 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.61.3] - 2022-07-14
+### Fixed
+- Forced eval of lazy sequence in tracing span causing performance degradation, from @samincheva
+
 ## [1.61.2] - 2022-07-12
 ### Changed
-- Add more opentracing spans to the match cycle, @samincheva
+- Add more opentracing spans to the match cycle, from @samincheva
 
 ### Fixed
 - Disabled pools integration tests handle 0 quota better, from @samincheva
