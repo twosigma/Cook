@@ -703,7 +703,7 @@
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable"
-                         :tags {:pool pool-name :component tracing-component-tag :num-pending-jobs pending-jobs}}]
+                         :tags {:pool pool-name :component tracing-component-tag}}]
     (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
                           {:pool pool-name :num-pending-jobs (count pending-jobs)})
     (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
@@ -727,7 +727,6 @@
                  :total-passed-count (->> @user->passed-count vals (reduce +))
                  :user->passed-count @user->passed-count
                  :pool pool-name})
-      (tracing/set-tags {:num-considerable (count considerable-jobs)})
       considerable-jobs)))
 
 
