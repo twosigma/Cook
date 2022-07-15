@@ -652,8 +652,8 @@
                                     (atom false) ; state-locked? atom
                                     false ; dynamic-cluster-config?
                                     rate-limit/AllowAllRateLimiter
-                                    "some-random-taint-A"
-                                    "taint-prefix-1"
+                                    "some-random-taint-A" "taint-prefix-1"
+                                    "some-random-taint-B" "taint-value-1"
                                     "some-random-label-A"
                                     "some-random-label-val-B"
                                     (repeatedly 16 #(ReentrantLock.))

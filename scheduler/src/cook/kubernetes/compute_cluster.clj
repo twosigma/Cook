@@ -339,7 +339,9 @@
                                      synthetic-pods-config node-blocklist-labels
                                      ^ExecutorService controller-executor-service
                                      cluster-definition state-atom state-locked?-atom dynamic-cluster-config?
-                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix
+                                     compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix
+                                     cook-pool-taint2-name cook-pool-taint2-value
+                                     cook-pool-label-name cook-pool-label-prefix
                                      controller-lock-objects kill-lock-object]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
@@ -753,6 +755,8 @@
            ca-cert-path
            cook-pool-taint-name
            cook-pool-taint-prefix
+           cook-pool-taint2-name
+           cook-pool-taint2-value
            cook-pool-label-name
            cook-pool-label-prefix
            ^String config-file
@@ -784,9 +788,7 @@
          state :running
          state-locked? false
          use-google-service-account? true
-         cook-pool-taint-name "cook-pool"
          cook-pool-taint-prefix ""
-         cook-pool-label-name "cook-pool"
          cook-pool-label-prefix ""
          use-token-refreshing-authenticator? false}
     :as compute-cluster-config}
@@ -835,7 +837,10 @@
                                                     (atom state)
                                                     (atom state-locked?)
                                                     dynamic-cluster-config?
-                                                    compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix
+                                                    compute-cluster-launch-rate-limiter
+                                                    cook-pool-taint-name cook-pool-taint-prefix
+                                                    cook-pool-taint2-name cook-pool-taint2-value
+                                                    cook-pool-label-name cook-pool-label-prefix
                                                     ; Vector instead of seq for O(1) access.
                                                     (with-meta (vec (repeatedly lock-shard-count #(ReentrantLock.)))
                                                                {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")})
