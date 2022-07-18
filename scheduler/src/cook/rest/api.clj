@@ -1004,7 +1004,7 @@
       (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
     (when (and requested-disk-type
                (not (contains? disk-types-on-pool requested-disk-type)))
-      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
+      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type " for pool " pool-name " with disks " disk-types-on-pool) disk)))))
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
