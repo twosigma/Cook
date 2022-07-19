@@ -782,7 +782,7 @@
     :let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints
           (remove #(contains?
-                     #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint cook-pool-taint2-name}
+                     (set [cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint cook-pool-taint2-name])
                      (.getKey ^V1Taint %))
                   taints-on-node)]
     (seq other-taints) (do
