@@ -114,6 +114,8 @@ class MultiUserCookTest(util.CookTest):
                     util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
 
     def test_user_pool_rate_limit(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         settings_dict = util.settings(self.cook_url)
         if settings_dict.get('rate-limit', {}).get('per-user-per-pool-job-launch', {}) is None:
             pytest.skip("Can't test job launch rate limit without launch rate limit set.")
@@ -199,6 +201,8 @@ class MultiUserCookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, job_uuids)
 
     def test_job_cpu_quota(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         name = self.current_name()
@@ -239,6 +243,8 @@ class MultiUserCookTest(util.CookTest):
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     def test_job_mem_quota(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         name = self.current_name()
@@ -279,6 +285,8 @@ class MultiUserCookTest(util.CookTest):
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     def test_job_count_quota(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         name = self.current_name()
@@ -865,6 +873,8 @@ class MultiUserCookTest(util.CookTest):
                         self.assertEqual(resp.status_code, 200, resp.text)
 
     def test_queue_endpoint(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         bad_constraints = [["HOSTNAME",
                            "EQUALS",
                            "will-not-get-scheduled"]]

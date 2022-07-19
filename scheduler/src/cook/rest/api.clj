@@ -872,21 +872,20 @@
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    ; We only want to associate the pool with the job if the job submission
-                    ; explicity specified a pool name. In other words, if the user did not specify
-                    ; a pool in the submission, we want the job's pool to be nil. The reason we
-                    ; lookup the pool db id using pool-name (and not pool-name-from-submission) is
-                    ; that a JobRouting plugin can translate a routing pool name to a real pool name.
+                    ; This is a wart. We want to set a pool unconditionally, but would
+                    ; need to fix unnumerable unit tests before then; you can't store
+                    ; a nil pool in datomic, and most of our unit tests pre-date
+                    ; pools and don't specify a config with a default pool
+                    pool-name
+                    (assoc :job/pool
+                           (lookup-cache-pool-name!
+                             caches/pool-name->db-id-cache
+                             db
+                             :db/id
+                             pool-name))
                     pool-name-from-submission
-                    (->
-                      (assoc :job/pool
-                             (lookup-cache-pool-name!
-                               caches/pool-name->db-id-cache
-                               db
-                               :db/id
-                               pool-name))
-                      (assoc :job/submit-pool-name
-                             pool-name-from-submission))
+                    (assoc :job/submit-pool-name
+                           pool-name-from-submission)
                     checkpoint (assoc :job/checkpoint (build-checkpoint checkpoint)))
         txn (plugins/adjust-job adjustment/plugin txn db)]
 
@@ -1005,7 +1004,7 @@
       (throw (ex-info (str "Disk request specified is greater than max disk size on pool") disk)))
     (when (and requested-disk-type
                (not (contains? disk-types-on-pool requested-disk-type)))
-      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type) disk)))))
+      (throw (ex-info (str "The following disk type is not supported: " requested-disk-type " for pool " pool-name " with disks " disk-types-on-pool) disk)))))
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of

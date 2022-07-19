@@ -2031,6 +2031,8 @@ if __name__ == '__main__':
                 self.assertEqual('Hello world!', cli.decode(cp.stdout))
 
     def test_usage(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
         primary_pool_mem = util.default_job_mem_mb()
         primary_pool_submit_flags = f'--cpus 0.1 --mem {primary_pool_mem} --max-retries 5'
@@ -2252,8 +2254,8 @@ if __name__ == '__main__':
                 self.assertEqual(0, cp.returncode, cp.stderr)
             else:
                 self.assertEqual(1, cp.returncode, cp.stderr)
-                self.assertIn(f"Job requested GPUs but pool {default_pool} does not have any valid GPU models",
-                              cli.stderr(cp))
+                self.assertIsNotNone(re.search(f"Job requested GPUs but pool {default_pool}.* does not have any valid GPU models",
+                                               cli.stderr(cp)))
         else:
             self.assertEqual(1, cp.returncode, cp.stderr)
             self.assertIn('GPU support is not enabled', cli.stderr(cp))

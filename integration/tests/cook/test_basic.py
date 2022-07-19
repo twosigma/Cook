@@ -2000,6 +2000,7 @@ class CookTest(util.CookTest):
                     pool_name = pool['name']
                     matching_gpu_models = [ii["valid-models"] for ii in valid_gpu_models_config_map if
                                            re.match(ii["pool-regex"], pool_name)]
+                    logging.info(f"In {pool_name} matching gpu models: {matching_gpu_models}")
                     # If there are no supported GPU models for pool, assert submission gets rejected
                     if len(matching_gpu_models) == 0 or len(matching_gpu_models[0]) == 0:
                         job_uuid, resp = submit_job(
@@ -2007,15 +2008,16 @@ class CookTest(util.CookTest):
                             gpus=1,
                             env={'COOK_GPU_MODEL': 'nvidia-tesla-p100'})
                         self.assertEqual(resp.status_code, 400)
-                        self.assertTrue(
-                            f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
+                        logging.info(f"Response is {resp} with content {resp.content}")
+                        self.assertIsNotNone(
+                            re.search(f"Job requested GPUs but pool {pool_name}.* does not have any valid GPU models",resp.text),
                             msg=resp.content)
                         job_uuid, resp = submit_job(
                             pool=pool_name,
                             gpus=2)
                         self.assertEqual(resp.status_code, 400)
-                        self.assertTrue(
-                            f"Job requested GPUs but pool {pool_name} does not have any valid GPU models" in resp.text,
+                        self.assertIsNotNone(
+                            re.search(f"Job requested GPUs but pool {pool_name}.* does not have any valid GPU models",resp.text),
                             msg=resp.content)
                     else:
                         # Job submission with valid GPU model
@@ -2190,7 +2192,7 @@ class CookTest(util.CookTest):
         self.assertEqual(job_uuid, instance['job']['uuid'])
 
     def test_user_usage_basic(self):
-        job_resources = {'cpus': 0.1, 'mem': 123}
+        job_resources = {'cpus': 0.04, 'mem': 23}
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)
         self.assertEqual(resp.status_code, 201, resp.content)
         pools, _ = util.all_pools(self.cook_url)
@@ -2217,6 +2219,8 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, [job_uuid])
 
     def test_user_usage_grouped(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_resources = {'cpus': 0.11, 'mem': 123}
@@ -2615,7 +2619,7 @@ class CookTest(util.CookTest):
         self.assertEqual(num_instances, len(job['instances']), json.dumps(job, indent=2))
 
     def test_pools_in_default_limit_response(self):
-        pools, resp = util.all_pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         pool_names = [p['name'] for p in pools]
 
         user = self.determine_user()
@@ -2940,13 +2944,15 @@ class CookTest(util.CookTest):
                                                                          "periodic-options": {"period-sec": 555},
                                                                          "options": {"preserve-paths": ["p2", "p1"]}})
             self.assertEqual(201, resp_enabled.status_code, resp_enabled.text)
-            util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success')
-            util.wait_for_instance(self.cook_url, job_uuid_enabled, status='success')
+            util.wait_for_instance(self.cook_url, job_uuid_disabled, status='success', wait_interval_ms=3000)
+            util.wait_for_instance(self.cook_url, job_uuid_enabled, status='success', wait_interval_ms=3000)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid_disabled, job_uuid_enabled])
 
     @unittest.skipUnless(util.using_kubernetes(), 'Test requires kubernetes')
     def test_kubernetes_metadata_env_vars(self):
+        if util.default_submit_pool_is_routed(self.cook_url):
+            self.skipTest("If we're job-routing the default submit pool, we don't know where the jobs end up.")
         docker_image = util.docker_image()
         container = {'type': 'docker',
                      'docker': {'image': docker_image}}
@@ -3019,7 +3025,7 @@ class CookTest(util.CookTest):
         job_count = max_pods_per_node + 1
         self.logger.info(f'Submitting {job_count} jobs')
         sleep_command = f'sleep {util.DEFAULT_TEST_TIMEOUT_SECS}'
-        job_resources = {'cpus': 0.05, 'mem': 16}
+        job_resources = {'cpus': 0.01, 'mem': 16}
         job_specs = util.minimal_jobs(job_count, command=sleep_command, **job_resources)
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs)
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -3055,7 +3061,6 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, resp.content)
         job = util.wait_for_job_in_statuses(self.cook_url, job_uuid, ['completed'])
         self.logger.info(json.dumps(job, indent=2))
-        self.assertNotIn('pool', job, job)
         self.assertEqual('success', job['state'], job)
         self.assertLessEqual(1, len(job['instances']))
         self.assertIn('success', [i['status'] for i in job['instances']], job)

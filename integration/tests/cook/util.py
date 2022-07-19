@@ -1419,8 +1419,13 @@ def default_pool(cook_url):
 
 
 def all_pools(cook_url):
-    """Returns the list of all pools that exist"""
+    """Returns the list of all pools that exist that tests should be submitted to. Only some the active_pools are expected to accept submissions."""
     resp = session.get(f'{cook_url}/pools')
+    all_pools_list = os.getenv('COOK_TEST_ALL_POOLS_LIST')
+    if all_pools_list is not None:
+        active_subset = [{'name': ii, 'state': 'active'} for ii in all_pools_list.split(',') if ii[0] != '!']
+        inactive_subset = [{'name': ii[1:], 'state': 'inactive'} for ii in all_pools_list.split(',') if ii[0] == '!']
+        return (active_subset + inactive_subset), None
     disallow_pools_regex = os.getenv('COOK_TEST_DISALLOW_POOLS_REGEX')
     all_pools = resp.json() if disallow_pools_regex is None else \
         [p for p in resp.json() if not re.match(disallow_pools_regex, p['name'])]
@@ -1428,7 +1433,10 @@ def all_pools(cook_url):
 
 
 def active_pools(cook_url):
-    """Returns the list of all active pools that exist"""
+    """Returns the list of all active pools that exist. This is a list of pools that successfully accept job submissions."""
+    active_pools_list = os.getenv('COOK_TEST_ACTIVE_POOLS_LIST')
+    if active_pools_list is not None:
+        return [{'name': ii} for ii in active_pools_list.split(',')], None
     pools, resp = all_pools(cook_url)
     all_active_pools = [p for p in pools if p['state'] == 'active']
     return all_active_pools, resp
@@ -1826,6 +1834,20 @@ def make_failed_job(cook_url, **kwargs):
         return job
 
     return wait_until(__make_failed_job, lambda _: True)
+
+@functools.lru_cache()
+def default_submit_pool_is_routed(cook_url):
+    """If the default submission pool is routed via the job-routing plugin, then various tests won't work because the submission pool
+    won't be the pool it ends up running in. This is used to determine which tests won't work."""
+    settings_dict = settings(cook_url)
+    job_routing = settings_dict.get("plugins", {}).get("job-routing", None)
+    logger.info(f"job routing config {job_routing}")
+    if job_routing is not None:
+        default_submit_pool_name = default_submit_pool()
+        default_pool_name = default_pool(cook_url)
+        if default_submit_pool_name in job_routing:
+            return True
+    return False
 
 
 @functools.lru_cache()

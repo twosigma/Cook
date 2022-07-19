@@ -31,6 +31,17 @@
             [metrics.counters :as counters]
             [plumbing.core :refer [map-keys]]))
 
+
+(defn quota-grouping-config
+  "Configuration flags for grouping quota."
+  []
+  (-> config :settings :quota-grouping))
+
+(defn job-ent-in-pool
+  [pool-name job-ent]
+  (let [cached-pool (cached-queries/job->pool-name job-ent)]
+    (or (= pool-name cached-pool) (= pool-name (get (quota-grouping-config) cached-pool)))))
+
 (defn- get-job-stats
   "Given all jobs for a particular job state, e.g. running or
    waiting, produces basic stats per user.
@@ -39,7 +50,7 @@
    types to amounts."
   [job-ents pool-name]
   (->> job-ents
-       (filter #(= pool-name (cached-queries/job->pool-name %)))
+       (filter #(job-ent-in-pool pool-name %))
        ;; Produce a list of maps from user's name to his stats.
        (mapv (fn [job-ent]
                (let [user (:job/user job-ent)
@@ -200,10 +211,13 @@
                     (let [mesos-db (d/db datomic/conn)
                           pending-job-ents (queries/get-pending-job-ents mesos-db)
                           running-job-ents (tools/get-running-job-ents mesos-db)
-                          all-pools (pool/all-pools mesos-db)
-                          pools (if (seq all-pools) all-pools [{:pool/name "no-pool"}])]
+                          ; Merge explicit pools as well as quota-grouping pools.
+                          all-pools (-> #{}
+                                        (into (map :pool/name (pool/all-pools mesos-db)))
+                                        (into (vals (quota-grouping-config))))
+                          pools (if (seq all-pools) all-pools "no-pool")]
                       (run!
-                        (fn [{:keys [pool/name]}]
+                        (fn [name]
                           (set-stats-counters! mesos-db state->previous-stats-atom
                                                pending-job-ents running-job-ents name))
                         pools)))

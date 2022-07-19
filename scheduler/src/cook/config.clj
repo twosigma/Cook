@@ -494,6 +494,8 @@
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
                                  pool-selection)})))
+     :quota-grouping (fnk [[:config {quota-grouping {}}]]
+                       quota-grouping)
      :pg-config (fnk [[:config {pg-config nil}]]
                   pg-config)
      :passport (fnk [[:config {passport {}}]]

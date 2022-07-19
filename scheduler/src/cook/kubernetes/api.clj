@@ -764,7 +764,7 @@
   "Can we schedule on a node. For now, yes, unless there are other taints on it or it contains any label in the
   node-blocklist-labels list.
   TODO: Incorporate other node-health measures here."
-  [{:keys [name node-blocklist-labels cook-pool-taint-name]} ^V1Node node pod-count-capacity node-name->pods]
+  [{:keys [name node-blocklist-labels cook-pool-taint-name cook-pool-taint2-name]} ^V1Node node pod-count-capacity node-name->pods]
   (b/cond
     (nil? node)
     false
@@ -782,7 +782,7 @@
     :let [taints-on-node (or (some-> node .getSpec .getTaints) [])
           other-taints
           (remove #(contains?
-                     #{cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint}
+                     (set [cook-pool-taint-name k8s-deletion-candidate-taint gpu-node-taint tenured-node-taint cook-pool-taint2-name])
                      (.getKey ^V1Taint %))
                   taints-on-node)]
     (seq other-taints) (do
@@ -1007,11 +1007,21 @@
      :volume-mounts (maybe-conj (conj volume-mounts sandbox-volume-mount mesos-sandbox-volume-mount) shm-volume-mount)}))
 
 (defn toleration-for-pool
-  "For a given cook pool name, create the right V1Toleration so that Cook will ignore that cook-pool taint."
+  "For a given cook pool name, create a pool-specific toleration so that Cook will ignore that cook-pool taint."
   [cook-pool-taint-name cook-pool-taint-prefix pool-name]
   (let [^V1Toleration toleration (V1Toleration.)]
     (.setKey toleration cook-pool-taint-name)
     (.setValue toleration (str cook-pool-taint-prefix pool-name))
+    (.setOperator toleration "Equal")
+    (.setEffect toleration "NoSchedule")
+    toleration))
+
+(defn toleration-for-pool2
+  "Create a static toleration that cook will always use."
+  [cook-pool-taint2-name cook-pool-taint2-value]
+  (let [^V1Toleration toleration (V1Toleration.)]
+    (.setKey toleration cook-pool-taint2-name)
+    (.setValue toleration cook-pool-taint2-value) ; Bug: Not using tint name.
     (.setOperator toleration "Equal")
     (.setEffect toleration "NoSchedule")
     toleration))
@@ -1340,7 +1350,8 @@
 
 (defn ^V1Pod task-metadata->pod
   "Given a task-request and other data generate the kubernetes V1Pod to launch that task."
-  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-label-name cook-pool-label-prefix] compute-cluster-name :name}
+  [namespace {:keys [cook-pool-taint-name cook-pool-taint-prefix cook-pool-taint2-name cook-pool-taint2-value
+                     cook-pool-label-name cook-pool-label-prefix] compute-cluster-name :name}
    {:keys [task-id command container task-request hostname pod-annotations pod-constraints pod-hostnames-to-avoid
            pod-labels pod-priority-class pod-supports-cook-init? pod-supports-cook-sidecar?]
     :or {pod-priority-class cook-job-pod-priority-class
@@ -1702,7 +1713,14 @@
     (.setRestartPolicy pod-spec "Never")
 
     (.addTolerationsItem pod-spec toleration-for-deletion-candidate-of-autoscaler)
-    (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name))
+    ; Cook supports two kinds of tolerations on nodes.
+    ; 1. It can tolerate a node, where the value of that toleration depends on the pool name.
+    ; I.e.,  <KEY1>=<PREFIX><POOLNAME>
+    (when cook-pool-taint-name
+      (.addTolerationsItem pod-spec (toleration-for-pool cook-pool-taint-name cook-pool-taint-prefix pool-name)))
+    ; 2. Or it can statically tolerate a particular KEY2 and VAL2.
+    (when cook-pool-taint2-name
+      (.addTolerationsItem pod-spec (toleration-for-pool2 cook-pool-taint2-name cook-pool-taint2-value)))
     ; We need to make sure synthetic pods --- which don't have a hostname set --- have a node selector
     ; to run only in nodes labelled with the appropriate cook pool
     (when-not hostname (add-node-selector pod-spec cook-pool-label-name (str cook-pool-label-prefix pool-name)))
