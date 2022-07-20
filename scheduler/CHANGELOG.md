@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.0] - 2022-07-20
+### Fixed
+- Add support for routing jobs between pools based on constraints, from @scrosby
+
 ## [1.61.3] - 2022-07-14
 ### Fixed
 - Forced eval of lazy sequence in tracing span causing performance degradation, from @samincheva
