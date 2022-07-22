@@ -38,6 +38,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
+            [cook.prometheus-metrics :as prometheus]
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
@@ -209,100 +210,102 @@
   "Takes a status update from mesos."
   [conn pool-name->fenzo-state status]
   (log/info "Instance status is:" status)
-  (timers/time!
-    handle-status-update-duration
-    (try (let [db (db conn)
-               {:keys [task-id reason task-state progress]} (interpret-task-status status)
-               _ (when-not task-id
-                   (throw (ex-info "task-id is nil. Something unexpected has happened."
-                                   {:status status
-                                    :task-id task-id
-                                    :reason reason
-                                    :task-state task-state
-                                    :progress progress})))
-               [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
-                                                                :in $ ?task-id
-                                                                :where
-                                                                [?i :instance/task-id ?task-id]
-                                                                [?i :instance/status ?s]
-                                                                [?s :db/ident ?status]
-                                                                [?j :job/instance ?i]]
-                                                              db task-id))
-               job-ent (d/entity db job)
-               instance-ent (d/entity db instance)
-               previous-reason (reason/instance-entity->reason-entity db instance-ent)
-               instance-status (condp contains? task-state
-                                 #{:task-staging} :instance.status/unknown
-                                 #{:task-starting
-                                   :task-running} :instance.status/running
-                                 #{:task-finished} :instance.status/success
-                                 #{:task-failed
-                                   :task-killed
-                                   :task-lost
-                                   :task-error} :instance.status/failed)
-               prior-job-state (:job/state (d/entity db job))
-               ^Date current-time (now)
-               ^Date start-time (or (:instance/start-time instance-ent) current-time)
-               instance-runtime (- (.getTime current-time) ; Used for reporting
-                                   (.getTime start-time))
-               job-resources (tools/job-ent->resources job-ent)
-               pool-name (cached-queries/job->pool-name job-ent)
-               unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
-           (when (#{:instance.status/success :instance.status/failed} instance-status)
-             (if unassign-task-set
-               (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
-               (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
-                                     {:pool pool-name :task-id task-id})))
-           (when (= instance-status :instance.status/success)
-             (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
-             (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
-           (when (= instance-status :instance.status/failed)
-             (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
-             (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
-             (when-not previous-reason
-               (update-reason-metrics! db task-id reason instance-runtime job-resources)))
-           (when-not (nil? instance)
-             (log/debug "Transacting updated state for instance" instance "to status" instance-status)
-             ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
-             ;; transaction; see the comment in the definition of :instance/update-state for more details
-             (let [transaction-chan (datomic/transact-with-retries
-                                      conn
-                                      (reduce
-                                        into
-                                        [[:instance/update-state
-                                          instance
-                                          instance-status
-                                          (or (:db/id previous-reason)
-                                              (reason/mesos-reason->cook-reason-entity-id db task-id reason)
-                                              [:reason.name :unknown])]]
-                                        [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                           [[:db/add
-                                             instance
-                                             :instance/reason
-                                             (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
-                                         (when (and (#{:instance.status/success
-                                                       :instance.status/failed} instance-status)
-                                                    (nil? (:instance/end-time instance-ent)))
-                                           [[:db/add instance :instance/end-time (now)]])
-                                         (when (and (#{:task-starting :task-running} task-state)
-                                                    (nil? (:instance/mesos-start-time instance-ent)))
-                                           [[:db/add instance :instance/mesos-start-time (now)]])
-                                         (when progress
-                                           [[:db/add instance :instance/progress progress]])]))]
-               (async/go
-                 ; Wait for the transcation to complete before running the plugin
-                 (let [chan-result (async/<! transaction-chan)]
-                   (when (#{:instance.status/success :instance.status/failed} instance-status)
-                     (let [db (d/db conn)
-                           updated-job (d/entity db job)
-                           updated-instance (d/entity db instance)]
-                       (try
-                         (plugins/on-instance-completion completion/plugin updated-job updated-instance)
-                         (catch Exception e
-                           (log/error e "Error while running instance completion plugin.")))))
-                   chan-result)))))
-         (catch Exception e
-           (log/error e "Mesos scheduler status update error")))))
+    (prometheus/with-duration
+      (prometheus/get-collector :cook/scheduler-handle-status-update-duaration-seconds)
+    (timers/time!
+      handle-status-update-duration
+      (try (let [db (db conn)
+                 {:keys [task-id reason task-state progress]} (interpret-task-status status)
+                 _ (when-not task-id
+                     (throw (ex-info "task-id is nil. Something unexpected has happened."
+                                     {:status status
+                                      :task-id task-id
+                                      :reason reason
+                                      :task-state task-state
+                                      :progress progress})))
+                 [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
+                                                                  :in $ ?task-id
+                                                                  :where
+                                                                  [?i :instance/task-id ?task-id]
+                                                                  [?i :instance/status ?s]
+                                                                  [?s :db/ident ?status]
+                                                                  [?j :job/instance ?i]]
+                                                                db task-id))
+                 job-ent (d/entity db job)
+                 instance-ent (d/entity db instance)
+                 previous-reason (reason/instance-entity->reason-entity db instance-ent)
+                 instance-status (condp contains? task-state
+                                   #{:task-staging} :instance.status/unknown
+                                   #{:task-starting
+                                     :task-running} :instance.status/running
+                                   #{:task-finished} :instance.status/success
+                                   #{:task-failed
+                                     :task-killed
+                                     :task-lost
+                                     :task-error} :instance.status/failed)
+                 prior-job-state (:job/state (d/entity db job))
+                 ^Date current-time (now)
+                 ^Date start-time (or (:instance/start-time instance-ent) current-time)
+                 instance-runtime (- (.getTime current-time) ; Used for reporting
+                                     (.getTime start-time))
+                 job-resources (tools/job-ent->resources job-ent)
+                 pool-name (cached-queries/job->pool-name job-ent)
+                 unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
+             (when (#{:instance.status/success :instance.status/failed} instance-status)
+               (if unassign-task-set
+                 (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
+                 (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
+                                       {:pool pool-name :task-id task-id})))
+             (when (= instance-status :instance.status/success)
+               (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
+               (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
+             (when (= instance-status :instance.status/failed)
+               (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
+               (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
+               (when-not previous-reason
+                 (update-reason-metrics! db task-id reason instance-runtime job-resources)))
+             (when-not (nil? instance)
+               (log/debug "Transacting updated state for instance" instance "to status" instance-status)
+               ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+               ;; transaction; see the comment in the definition of :instance/update-state for more details
+               (let [transaction-chan (datomic/transact-with-retries
+                                        conn
+                                        (reduce
+                                          into
+                                          [[:instance/update-state
+                                            instance
+                                            instance-status
+                                            (or (:db/id previous-reason)
+                                                (reason/mesos-reason->cook-reason-entity-id db task-id reason)
+                                                [:reason.name :unknown])]]
+                                          [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                             [[:db/add
+                                               instance
+                                               :instance/reason
+                                               (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
+                                           (when (and (#{:instance.status/success
+                                                         :instance.status/failed} instance-status)
+                                                      (nil? (:instance/end-time instance-ent)))
+                                             [[:db/add instance :instance/end-time (now)]])
+                                           (when (and (#{:task-starting :task-running} task-state)
+                                                      (nil? (:instance/mesos-start-time instance-ent)))
+                                             [[:db/add instance :instance/mesos-start-time (now)]])
+                                           (when progress
+                                             [[:db/add instance :instance/progress progress]])]))]
+                 (async/go
+                   ; Wait for the transcation to complete before running the plugin
+                   (let [chan-result (async/<! transaction-chan)]
+                     (when (#{:instance.status/success :instance.status/failed} instance-status)
+                       (let [db (d/db conn)
+                             updated-job (d/entity db job)
+                             updated-instance (d/entity db instance)]
+                         (try
+                           (plugins/on-instance-completion completion/plugin updated-job updated-instance)
+                           (catch Exception e
+                             (log/error e "Error while running instance completion plugin.")))))
+                     chan-result)))))
+           (catch Exception e
+             (log/error e "Mesos scheduler status update error"))))))
 
 (defn write-sandbox-url-to-datomic
   "Takes a sandbox file server URL from the compute cluster and saves it to datomic."
@@ -335,21 +338,23 @@
   [conn {:keys [handle-exit-code handle-progress-message]}
    {:strs [exit-code progress-message progress-percent progress-sequence task-id] :as message}]
   (log/info "Received framework message:" {:task-id task-id, :message message})
-  (timers/time!
-    handle-framework-message-duration
-    (try
-      (when (str/blank? task-id)
-        (throw (ex-info "task-id is empty in framework message" {:message message})))
-      (when (or progress-message progress-percent)
-        (handle-progress-message (d/db conn) task-id
-                                 {:progress-message progress-message
-                                  :progress-percent progress-percent
-                                  :progress-sequence progress-sequence}))
-      (when exit-code
-        (log/info "Updating instance" task-id "exit-code to" exit-code)
-        (handle-exit-code task-id exit-code))
-      (catch Exception e
-        (log/error e "Mesos scheduler framework message error")))))
+  (prometheus/with-duration
+    (prometheus/get-collector :cook/scheduler-handle-framework-message-duration-seconds)
+    (timers/time!
+      handle-framework-message-duration
+      (try
+        (when (str/blank? task-id)
+          (throw (ex-info "task-id is empty in framework message" {:message message})))
+        (when (or progress-message progress-percent)
+          (handle-progress-message (d/db conn) task-id
+                                   {:progress-message progress-message
+                                    :progress-percent progress-percent
+                                    :progress-sequence progress-sequence}))
+        (when exit-code
+          (log/info "Updating instance" task-id "exit-code to" exit-code)
+          (handle-exit-code task-id exit-code))
+        (catch Exception e
+          (log/error e "Mesos scheduler framework message error"))))))
 
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
@@ -637,13 +642,16 @@
               ;; task assigner may be called when reconciling
               to-unassign (util/set-atom! unassign-task-set #{})
               ^Action2 unassigner (.getTaskUnAssigner fenzo)
-              ^SchedulingResult result (tracing/with-span [s {:name "scheduler.match-offer-to-scheduler.fenzo-schedule-once"
-                                                              :tags {:pool pool-name :component tracing-component-tag}}]
-                                                          (locking fenzo
-                                                            (unassign-all pool-name unassigner to-unassign)
-                                                            (timers/time!
-                                                              (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
-                                                              (.scheduleOnce fenzo requests leases))))
+              ^SchedulingResult result (tracing/with-span
+                                         [s {:name "scheduler.match-offer-to-scheduler.fenzo-schedule-once"
+                                             :tags {:pool pool-name :component tracing-component-tag}}]
+                                         (locking fenzo
+                                           (unassign-all pool-name unassigner to-unassign)
+                                           (prometheus/with-duration
+                                             (prometheus/get-collector :cook/scheduler-fenzo-schedule-once-duration-seconds {:pool pool-name})
+                                             (timers/time!
+                                               (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
+                                               (.scheduleOnce fenzo requests leases)))))
               failure-results (-> result .getFailures .values)
               assignments (-> result .getResultMap .values)]
           (doall (map (fn [^VirtualMachineLease lease]
@@ -685,18 +693,20 @@
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db pool-name]
-  (tracing/with-span [s {:name "scheduler.generate-user-usage-map"
-                         :tags {:pool pool-name :component tracing-component-tag}}]
-    (timers/time!
-      generate-user-usage-map-duration
-      (->> (tools/get-running-task-ents unfiltered-db)
-           (map :job/_instance)
-           (remove #(not= pool-name (cached-queries/job->pool-name %)))
-           (group-by :job/user)
-           (pc/map-vals (fn [jobs]
-                          (->> jobs
-                               (map tools/job->usage)
-                               (reduce (partial merge-with +)))))))))
+  (tracing/with-span
+    [s {:name "scheduler.generate-user-usage-map" :tags {:pool pool-name :component tracing-component-tag}}]
+    (prometheus/with-duration
+      (prometheus/get-collector :cook/scheduler-generate-user-usage-map-duration-seconds {:pool pool-name})
+      (timers/time!
+        generate-user-usage-map-duration
+        (->> (tools/get-running-task-ents unfiltered-db)
+             (map :job/_instance)
+             (remove #(not= pool-name (cached-queries/job->pool-name %)))
+             (group-by :job/user)
+             (pc/map-vals (fn [jobs]
+                            (->> jobs
+                                 (map tools/job->usage)
+                                 (reduce (partial merge-with +))))))))))
 
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
@@ -924,53 +934,58 @@
         count-txns (count task-txns)
         matches-for-logging (format-matches-for-structured-logging matches)
         kill-lock-object (cc/kill-lock-object compute-cluster)]
-    (tracing/with-span [s {:name "scheduler.launch-tasks-for-cluster"
-                           :tags {:pool pool-name :compute-cluster compute-cluster-name :number-tasks count-txns
-                                  :component tracing-component-tag}}]
+    (tracing/with-span
+      [s {:name "scheduler.launch-tasks-for-cluster"
+          :tags {:pool pool-name :compute-cluster compute-cluster-name :number-tasks count-txns :component tracing-component-tag}}]
       (log-structured/info "Writing tasks"
                            ; use print-str for the first 10 tasks so that we don't treat the map as json
                            {:first-ten-tasks (print-str (take 10 matches-for-logging))
                             :compute-cluster compute-cluster-name
                             :pool pool-name
                             :number-tasks count-txns})
-      (timers/time!
-        (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
-        (try
-          ; Avoids a race between launching tasks and killing tasks. See kill-lock-object docs for more info.
-          (.. kill-lock-object readLock lock)
-          ;; Note that this transaction can fail if a job was scheduled
-          ;; during a race. If that happens, then other jobs that should
-          ;; be scheduled will not be eligible for rescheduling until
-          ;; the pending-jobs atom is repopulated
-          (timers/time!
-            (timers/timer (metric-title "handle-resource-offer!-transact-task-duration" pool-name))
-            (datomic/transact
-              conn
-              (reduce into [] task-txns)
-              (fn [e]
-                (log-structured/warn (print-str "Transaction timed out, so these tasks might be present"
-                                                "in Datomic without actually having been launched in compute cluster"
-                                                matches-for-logging)
-                                     {:compute-cluster compute-cluster-name
-                                      :pool pool-name}
-                                     e)
-                (throw e))))
+      (prometheus/with-duration
+        (prometheus/get-collector :cook/scheduler-launch-all-matched-tasks-total-duration-seconds {:pool pool-name})
+        (timers/time!
+          (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
+          (try
+            ; Avoids a race between launching tasks and killing tasks. See kill-lock-object docs for more info.
+            (.. kill-lock-object readLock lock)
+            ;; Note that this transaction can fail if a job was scheduled
+            ;; during a race. If that happens, then other jobs that should
+            ;; be scheduled will not be eligible for rescheduling until
+            ;; the pending-jobs atom is repopulated
+            (prometheus/with-duration
+              (prometheus/get-collector :cook/scheduler-launch-all-matched-tasks-transact-duration-seconds {:pool pool-name})
+              (timers/time!
+                (timers/timer (metric-title "handle-resource-offer!-transact-task-duration" pool-name))
+                (datomic/transact
+                  conn
+                  (reduce into [] task-txns)
+                  (fn [e]
+                    (log-structured/warn (print-str "Transaction timed out, so these tasks might be present"
+                                                    "in Datomic without actually having been launched in compute cluster"
+                                                    matches-for-logging)
+                                         {:compute-cluster compute-cluster-name
+                                          :pool pool-name}
+                                         e)
+                    (throw e)))))
 
-          (handle-launch-task-metrics matches count-txns pool-name compute-cluster)
+            (handle-launch-task-metrics matches count-txns pool-name compute-cluster)
 
-          ;; Launching the matched tasks MUST happen after the above transaction in
-          ;; order to allow a transaction failure (due to failed preconditions)
-          ;; to block the launch
-          (timers/time!
-            (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
-            (let [_ (log-structured/info "Launching matched tasks for compute cluster"
-                                         {:pool pool-name :compute-cluster compute-cluster-name})]
-              (doseq [match matches]
-                (timers/stop (-> match :leases first :offer :offer-match-timer)))
-              (#(launch-matches! compute-cluster pool-name matches fenzo))))
-          (finally
-            (.. kill-lock-object readLock unlock))))))
-  )
+            ;; Launching the matched tasks MUST happen after the above transaction in
+            ;; order to allow a transaction failure (due to failed preconditions)
+            ;; to block the launch
+            (prometheus/with-duration
+              (prometheus/get-collector :cook/scheduler-launch-all-matched-tasks-submit-duration-seconds {:pool pool-name})
+              (timers/time!
+                (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
+                (let [_ (log-structured/info "Launching matched tasks for compute cluster"
+                                             {:pool pool-name :compute-cluster compute-cluster-name})]
+                  (doseq [match matches]
+                    (timers/stop (-> match :leases first :offer :offer-match-timer)))
+                  (#(launch-matches! compute-cluster pool-name matches fenzo)))))
+            (finally
+              (.. kill-lock-object readLock unlock))))))))
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
@@ -1049,27 +1064,30 @@
   - There is at least one pending job
   - There is at least one compute cluster configured to do autoscaling"
   [pending-jobs-for-autoscaling pool-name compute-clusters job->acceptable-compute-clusters-fn]
-  (tracing/with-span [s {:name "scheduler.trigger-autoscaling" :tags {:component tracing-component-tag}}]
-    (timers/time!
-      (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
-      (try
-        (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-              num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-          (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
-            (log-structured/info "Preparing for autoscaling" {:pool pool-name})
-            (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                          pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
-                                          job->acceptable-compute-clusters-fn)]
-              (log-structured/info "Starting autoscaling" {:pool pool-name})
-              (->> compute-cluster->jobs
-                   (map
-                     (fn [[compute-cluster jobs-for-cluster]]
-                       (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
-                   doall
-                   (run! deref)))
-            (log-structured/info "Done autoscaling" {:pool pool-name})))
-        (catch Throwable e
-          (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e))))))
+  (tracing/with-span
+    [s {:name "scheduler.trigger-autoscaling" :tags {:component tracing-component-tag}}]
+    (prometheus/with-duration
+      (prometheus/get-collector :cook/scheduler-trigger-autoscaling-duration-seconds {:pool pool-name})
+      (timers/time!
+        (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
+        (try
+          (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+                num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+            (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
+              (log-structured/info "Preparing for autoscaling" {:pool pool-name})
+              (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                            pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
+                                            job->acceptable-compute-clusters-fn)]
+                (log-structured/info "Starting autoscaling" {:pool pool-name})
+                (->> compute-cluster->jobs
+                     (map
+                       (fn [[compute-cluster jobs-for-cluster]]
+                         (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
+                     doall
+                     (run! deref)))
+              (log-structured/info "Done autoscaling" {:pool pool-name})))
+          (catch Throwable e
+            (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))))
 
 (def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
 
@@ -1139,174 +1157,183 @@
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
-    (tracing/with-span [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :component tracing-component-tag}}]
-      (timers/time!
-        (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
-        (try
-          (let [db (db conn)
-                pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-                considerable-jobs (timers/time!
-                                    (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
-                                    (pending-jobs->considerable-jobs
-                                      db pending-jobs user->quota user->usage num-considerable pool-name))
-                ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
-                {:keys [matches failures]} (timers/time!
-                                             (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
-                                             (match-offer-to-schedule db fenzo-state considerable-jobs offers
-                                                                      rebalancer-reservation-atom pool-name))
-                matches (filter-matches-for-ratelimit matches)
-                _ (log-structured/debug (print-str "Got matches after rate limit:" matches) {:pool pool-name})
-                offers-scheduled (for [{:keys [leases]} matches
-                                       lease leases]
-                                   (:offer lease))
-                matched-job-uuids (timers/time!
-                                    (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool-name))
-                                    (matches->job-uuids matches pool-name))
-                first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
-                matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))
+    (tracing/with-span
+      [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :component tracing-component-tag}}]
+      (prometheus/with-duration
+        (prometheus/get-collector :cook/scheduler-handle-resource-offers-total-duration-seconds {:pool pool-name})
+        (timers/time!
+          (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
+          (try
+            (let [db (db conn)
+                  pending-jobs (get @pool-name->pending-jobs-atom pool-name)
+                  considerable-jobs (prometheus/with-duration
+                                      (prometheus/get-collector :cook/scheduler-handle-resource-offers-pending-to-considerable-duration-seconds {:pool pool-name})
+                                      (timers/time!
+                                        (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
+                                        (pending-jobs->considerable-jobs
+                                          db pending-jobs user->quota user->usage num-considerable pool-name)))
+                  ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
+                  {:keys [matches failures]} (prometheus/with-duration
+                                               (prometheus/get-collector :cook/scheduler-handle-resource-offers-match-duration-seconds {:pool pool-name})
+                                               (timers/time!
+                                                 (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
+                                                 (match-offer-to-schedule db fenzo-state considerable-jobs offers
+                                                                          rebalancer-reservation-atom pool-name)))
+                  matches (filter-matches-for-ratelimit matches)
+                  _ (log-structured/debug (print-str "Got matches after rate limit:" matches) {:pool pool-name})
+                  offers-scheduled (for [{:keys [leases]} matches
+                                         lease leases]
+                                     (:offer lease))
+                  matched-job-uuids (prometheus/with-duration
+                                      (prometheus/get-collector :cook/scheduler-handle-resource-offers-matches-to-job-uuids-duration-seconds {:pool pool-name})
+                                      (timers/time!
+                                        (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool-name))
+                                        (matches->job-uuids matches pool-name)))
+                  first-considerable-job-resources (-> considerable-jobs first tools/job-ent->resources)
+                  matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))
 
-                number-matched-jobs (count matched-job-uuids)
-                number-considerable-jobs (count considerable-jobs)
-                number-unmatched-jobs (- number-considerable-jobs number-matched-jobs)]
+                  number-matched-jobs (count matched-job-uuids)
+                  number-considerable-jobs (count considerable-jobs)
+                  number-unmatched-jobs (- number-considerable-jobs number-matched-jobs)]
 
-            (handle-match-cycle-metrics {:considerable-jobs considerable-jobs
-                                         :head-matched? matched-considerable-jobs-head?
-                                         :head-resources first-considerable-job-resources
-                                         :matches matches
-                                         :max-considerable num-considerable
-                                         :number-considerable-jobs number-considerable-jobs
-                                         :number-matched-jobs number-matched-jobs
-                                         :number-unmatched-jobs number-unmatched-jobs
-                                         :offers offers
-                                         :offers-scheduled offers-scheduled
-                                         :pool-name pool-name})
+              (handle-match-cycle-metrics {:considerable-jobs considerable-jobs
+                                           :head-matched? matched-considerable-jobs-head?
+                                           :head-resources first-considerable-job-resources
+                                           :matches matches
+                                           :max-considerable num-considerable
+                                           :number-considerable-jobs number-considerable-jobs
+                                           :number-matched-jobs number-matched-jobs
+                                           :number-unmatched-jobs number-unmatched-jobs
+                                           :offers offers
+                                           :offers-scheduled offers-scheduled
+                                           :pool-name pool-name})
 
-            ; We want to log warnings when jobs have gone unmatched for a long time.
-            ; In order to do this, we keep track, per pool, of the jobs that did not
-            ; get matched to an offer, along with how many matching cycles they've
-            ; gone unmatched for. The amount of data we store is relatively small;
-            ; it's O(# pools * # considerable jobs). If a job uuid does get matched,
-            ; we stop storing it. We never store job uuids that were not considerable
-            ; in the first place.
-            (let [unmatched-job-uuids
-                  (set/difference
-                    (->> considerable-jobs (map :job/uuid) set)
-                    (set matched-job-uuids))
-                  ; There are two configuration knobs we can tweak:
-                  ; - unmatched-cycles-warn-threshold:
-                  ;   the # of consecutive unmatched matching cycles we care about
-                  ; - unmatched-fraction-warn-threshold:
-                  ;   the fraction of considerable jobs that have gone unmatched for
-                  ;   at least unmatched-cycles-warn-threshold beyond which we will
-                  ;   warn
-                  {:keys [unmatched-cycles-warn-threshold
-                          unmatched-fraction-warn-threshold]}
-                  (config/offer-matching)]
-              (swap!
-                ; This atom's value is a map of the following shape:
-                ;
-                ; {"pool-1" {job-uuid-a count-a
-                ;            job-uuid-b count-b
-                ;            ...}
-                ;  "pool-2" {job-uuid-c count-c
-                ;            job-uuid-d count-d
-                ;            ...}
-                ; ...}
-                ;
-                ; where the counts are the numbers of consecutive
-                ; matching cycles that the job has gone unmatched
-                pool-name->unmatched-job-uuid->unmatched-cycles-atom
-                (fn [m]
-                  (let [; Note that this doesn't leak jobs and grow
-                        ; forever. We build a new map from scratch
-                        ; of size at most (count unmatched-job-uuids),
-                        ; which is <= num-considerable. That new map
-                        ; gets assoc'ed in, replacing the existing
-                        ; job-uuid -> unmatched-cycles sub-map, which
-                        ; means we won't leak historic jobs.
-                        unmatched-job-uuid->unmatched-cycles
-                        (pc/map-from-keys
-                          (fn [job-uuid]
-                            (-> m
+              ; We want to log warnings when jobs have gone unmatched for a long time.
+              ; In order to do this, we keep track, per pool, of the jobs that did not
+              ; get matched to an offer, along with how many matching cycles they've
+              ; gone unmatched for. The amount of data we store is relatively small;
+              ; it's O(# pools * # considerable jobs). If a job uuid does get matched,
+              ; we stop storing it. We never store job uuids that were not considerable
+              ; in the first place.
+              (let [unmatched-job-uuids
+                    (set/difference
+                      (->> considerable-jobs (map :job/uuid) set)
+                      (set matched-job-uuids))
+                    ; There are two configuration knobs we can tweak:
+                    ; - unmatched-cycles-warn-threshold:
+                    ;   the # of consecutive unmatched matching cycles we care about
+                    ; - unmatched-fraction-warn-threshold:
+                    ;   the fraction of considerable jobs that have gone unmatched for
+                    ;   at least unmatched-cycles-warn-threshold beyond which we will
+                    ;   warn
+                    {:keys [unmatched-cycles-warn-threshold
+                            unmatched-fraction-warn-threshold]}
+                    (config/offer-matching)]
+                (swap!
+                  ; This atom's value is a map of the following shape:
+                  ;
+                  ; {"pool-1" {job-uuid-a count-a
+                  ;            job-uuid-b count-b
+                  ;            ...}
+                  ;  "pool-2" {job-uuid-c count-c
+                  ;            job-uuid-d count-d
+                  ;            ...}
+                  ; ...}
+                  ;
+                  ; where the counts are the numbers of consecutive
+                  ; matching cycles that the job has gone unmatched
+                  pool-name->unmatched-job-uuid->unmatched-cycles-atom
+                  (fn [m]
+                    (let [; Note that this doesn't leak jobs and grow
+                          ; forever. We build a new map from scratch
+                          ; of size at most (count unmatched-job-uuids),
+                          ; which is <= num-considerable. That new map
+                          ; gets assoc'ed in, replacing the existing
+                          ; job-uuid -> unmatched-cycles sub-map, which
+                          ; means we won't leak historic jobs.
+                          unmatched-job-uuid->unmatched-cycles
+                          (pc/map-from-keys
+                            (fn [job-uuid]
+                              (-> m
                                 (get pool-name)
                                 (get job-uuid 0)
                                 inc))
-                          unmatched-job-uuids)
-                        ; Filter the map of job-uuid -> cycle-count
-                        ; down to only those entries where the # of
-                        ; cycles is greater than the threshold
-                        unmatched-too-long
-                        (filter
-                          (fn [[_ cycles]]
-                            (> cycles
-                               unmatched-cycles-warn-threshold))
-                          unmatched-job-uuid->unmatched-cycles)]
-                    (when
-                      (and
-                        ; If there are no considerable jobs,
-                        ; then this warning is not applicable
-                        (pos? (count considerable-jobs))
-                        ; We only want to warn then the fraction of
-                        ; considerable jobs that are unmatched for
-                        ; too long (too many consecutive cycles) is
-                        ; greater than the configured threshold
-                        (-> unmatched-too-long
+                            unmatched-job-uuids)
+                          ; Filter the map of job-uuid -> cycle-count
+                          ; down to only those entries where the # of
+                          ; cycles is greater than the threshold
+                          unmatched-too-long
+                          (filter
+                            (fn [[_ cycles]]
+                              (> cycles
+                                 unmatched-cycles-warn-threshold))
+                            unmatched-job-uuid->unmatched-cycles)]
+                      (when
+                        (and
+                          ; If there are no considerable jobs,
+                          ; then this warning is not applicable
+                          (pos? (count considerable-jobs))
+                          ; We only want to warn then the fraction of
+                          ; considerable jobs that are unmatched for
+                          ; too long (too many consecutive cycles) is
+                          ; greater than the configured threshold
+                          (-> unmatched-too-long
                             count
                             (/ (count considerable-jobs))
                             (> unmatched-fraction-warn-threshold)))
-                      ; Including the first 10 job uuids that have gone unmatched for too
-                      ; long can help in troubleshooting the issue when this happens
-                      (log-structured/warn "Jobs are unmatched for too long"
-                                           {:pool pool-name
-                                            :first-ten-unmatched-too-long (print-str (take 10 unmatched-too-long))
-                                            :number-considerable (count considerable-jobs)
-                                            :number-unmatched-too-long (count unmatched-too-long)
-                                            :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
-                                            :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
-                    ; We need to update the overall map so that we update the
-                    ; job-uuid -> cycle-count state from iteration to iteration
-                    (assoc
-                      m
-                      pool-name
-                      unmatched-job-uuid->unmatched-cycles)))))
+                        ; Including the first 10 job uuids that have gone unmatched for too
+                        ; long can help in troubleshooting the issue when this happens
+                        (log-structured/warn "Jobs are unmatched for too long"
+                                             {:pool pool-name
+                                              :first-ten-unmatched-too-long (print-str (take 10 unmatched-too-long))
+                                              :number-considerable (count considerable-jobs)
+                                              :number-unmatched-too-long (count unmatched-too-long)
+                                              :unmatched-cycles-warn-threshold unmatched-cycles-warn-threshold
+                                              :unmatched-fraction-warn-threshold unmatched-fraction-warn-threshold}))
+                      ; We need to update the overall map so that we update the
+                      ; job-uuid -> cycle-count state from iteration to iteration
+                      (assoc
+                        m
+                        pool-name
+                        unmatched-job-uuid->unmatched-cycles)))))
 
-            (fenzo/record-placement-failures! conn failures)
+              (fenzo/record-placement-failures! conn failures)
 
-            (reset! offer-stash offers-scheduled)
-            (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
-            (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
+              (reset! offer-stash offers-scheduled)
+              (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
+              (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
 
-            (let [matched-head-or-no-matches?
-                  ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
-                  ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
-                  ;; it fewer jobs to look at is unlikely to improve the situation.
-                  ;; "Penalization" should only be employed when Fenzo does successfully match,
-                  ;; but the matches don't align with Cook's priorities.
-                  (if (empty? matches)
-                    true
-                    (do
-                      (swap! pool-name->pending-jobs-atom
-                             remove-matched-jobs-from-pending-jobs
-                             matched-job-uuids pool-name)
-                      (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
-                                            {:pool pool-name})
-                      (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
-                      (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
-                      matched-considerable-jobs-head?))
-                  ; Absolute maximum jobs we will consider autoscaling to.
-                  {:keys [max-jobs-for-autoscaling autoscaling-scale-factor]} (config/kubernetes)
-                  ; The fraction of jobs we tried to match that didn't actually get matched.
-                  fraction-unmatched-jobs (if (pos? number-considerable-jobs) (/ (float number-unmatched-jobs) number-considerable-jobs) 0)
-                  ; We want to autoscale any unmatched job
-                  ;     OR
-                  ; we want to scale our max-jobs-for-autoscaling by the fraction of the jobs we weren't able to just match.
-                  ; E.g. If we didn't match 20% of the queue, then we want to autoscale to 20% of max-jobs-for-autoscaling.
-                  ; We include a scale factor however, so that if we don't match 20% and scale factor is 2.5, we'll generate
-                  ; pods for 50% of max-jobs-for-autoscaling.
-                  ; We do this to vary our aggression for autoscaling based on how well we're matching jobs on our existing resources.
-                  ; If we're matching most of the jobs in the queue then we don't need to autoscale much. If we are not matching anything
-                  ; then we want to autoscale maximally aggressively.
-                  max-jobs-for-autoscaling-scaled (-> fraction-unmatched-jobs
+              (let [matched-head-or-no-matches?
+                    ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
+                    ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
+                    ;; it fewer jobs to look at is unlikely to improve the situation.
+                    ;; "Penalization" should only be employed when Fenzo does successfully match,
+                    ;; but the matches don't align with Cook's priorities.
+                    (if (empty? matches)
+                      true
+                      (do
+                        (swap! pool-name->pending-jobs-atom
+                               remove-matched-jobs-from-pending-jobs
+                               matched-job-uuids pool-name)
+                        (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
+                                              {:pool pool-name})
+                        (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
+                        (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
+                        matched-considerable-jobs-head?))
+                    ; Absolute maximum jobs we will consider autoscaling to.
+                    {:keys [max-jobs-for-autoscaling autoscaling-scale-factor]} (config/kubernetes)
+                    ; The fraction of jobs we tried to match that didn't actually get matched.
+                    fraction-unmatched-jobs (if (pos? number-considerable-jobs) (/ (float number-unmatched-jobs) number-considerable-jobs) 0)
+                    ; We want to autoscale any unmatched job
+                    ;     OR
+                    ; we want to scale our max-jobs-for-autoscaling by the fraction of the jobs we weren't able to just match.
+                    ; E.g. If we didn't match 20% of the queue, then we want to autoscale to 20% of max-jobs-for-autoscaling.
+                    ; We include a scale factor however, so that if we don't match 20% and scale factor is 2.5, we'll generate
+                    ; pods for 50% of max-jobs-for-autoscaling.
+                    ; We do this to vary our aggression for autoscaling based on how well we're matching jobs on our existing resources.
+                    ; If we're matching most of the jobs in the queue then we don't need to autoscale much. If we are not matching anything
+                    ; then we want to autoscale maximally aggressively.
+                    max-jobs-for-autoscaling-scaled (-> fraction-unmatched-jobs
                                                       (* autoscaling-scale-factor)
                                                       (min 1) ; Can't match more than 100% of max-jobs-for-autoscaling.
                                                       (* max-jobs-for-autoscaling)
@@ -1355,7 +1382,7 @@
                                           {:pool pool-name :compute-cluster compute-cluster}
                                           t)))))
             ; if an error happened, it doesn't mean we need to penalize Fenzo
-            true))))))
+            true)))))))
 
 (defn view-incubating-offers
   [^TaskScheduler fenzo]
@@ -1386,111 +1413,113 @@
       trigger-chan
       (fn match-jobs-event []
         (log-structured/info "Starting offer matching" {:pool pool-name})
-        (timers/time!
-          (timers/timer (metric-title "match-jobs-event" pool-name))
-          (tracing/with-span [s {:name "scheduler.offer-handler.match-jobs"
-                                 :tags {:pool pool-name :component tracing-component-tag}}]
-            (let [num-considerable @fenzo-num-considerable-atom
-                  next-considerable
-                  (try
-                    (let [
-                          ;; There are implications to generating the user->usage here:
-                          ;;  1. Currently cook has two oddities in state changes.
-                          ;;  We plan to correct both of these but are important for the time being.
-                          ;;    a. Cook doesn't mark as a job as running when it schedules a job.
-                          ;;       While this is technically correct, it confuses some process.
-                          ;;       For example, it will mean that the user->usage generated here
-                          ;;       may not include jobs that have been scheduled but haven't started.
-                          ;;       Since we do the filter for quota first, this is ok because those jobs
-                          ;;       show up in the queue. However, it is important to know about
-                          ;;    b. Cook doesn't update the job state when cook hears from mesos about the
-                          ;;       state of an instance. Cook waits until it hears from datomic about the
-                          ;;       instance state change to change the state of the job. This means that it
-                          ;;       is possible to have large delays between when an instance changes status
-                          ;;       and the job reflects that change
-                          ;;  2. Once the above two items are addressed, user->usage should always correctly
-                          ;;     reflect *Cook*'s understanding of the state of the world at this point.
-                          ;;     When this happens, users should never exceed their quota
-                          user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span
-                                                                        (generate-user-usage-map (d/db conn) pool-name)))
-                          ;; Try to clear the channel
-                          ;; Merge the pending offers from all compute clusters.
-                          compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
-                          offers (tracing/with-span [s {:name "scheduler.offer-handler.generate-offers"
-                                                        :tags {:pool pool-name :component tracing-component-tag}}]
-                                                    (apply concat (map (fn [compute-cluster]
-                                                                         (try
-                                                                           (cc/pending-offers compute-cluster pool-name)
-                                                                           (catch Throwable t
-                                                                             (log-structured/error "Error getting pending offers"
-                                                                                                   {:pool pool-name
-                                                                                                    :compute-cluster (cc/compute-cluster-name compute-cluster)}
-                                                                                                   t)
-                                                                             (list))))
-                                                                       compute-clusters)))
-                          _ (tracing/with-span [s {:name "scheduler.offer-handler.cache-offers-for-rebalancer"
-                                                   :tags {:pool pool-name :component tracing-component-tag}}]
-                                               (doseq [offer offers
-                                                       :let [slave-id (-> offer :slave-id :value)]]
-                                                 ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
-                                                 ; Computing get-offer-attr-map is pretty expensive because it includes calculating
-                                                 ; currently running pods, so we have to union the set of pods k8s says are there and
-                                                 ; the set of pods we're trying to put on the node. Even though it's not used by
-                                                 ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
-                                                 ; and only store if it is a new node.
-                                                 (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
-                                                   (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
-                          using-pools? (not (nil? (config/default-pool)))
-                          user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-                          user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
-                                                             :tags {:pool pool-name :component tracing-component-tag}}]
-                                                         @user->usage-future)
-                          matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
-                                                                 mesos-run-as-user user->usage user->quota
-                                                                 num-considerable offers
-                                                                 rebalancer-reservation-atom pool-name compute-clusters
-                                                                 job->acceptable-compute-clusters-fn)]
-                      (when (seq offers)
-                        (reset! resources-atom (view-incubating-offers fenzo)))
-                      ;; This check ensures that, although we value Fenzo's optimizations,
-                      ;; we also value Cook's sensibility of fairness when deciding which jobs
-                      ;; to schedule.  If Fenzo produces a set of matches that doesn't include
-                      ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
-                      ;; freedom in the form of fewer jobs to consider.
-                      (if matched-head?
-                        max-considerable
-                        (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-                          (log-structured/info "Failed to match head, reducing number of considerable jobs"
-                                               {:prev-considerable num-considerable
-                                                :new-considerable new-considerable
-                                                :pool pool-name})
-                          new-considerable)))
-                    (catch Exception e
-                      (log-structured/error "Offer handler encountered exception; continuing" {:pool pool-name} e)
-                      max-considerable))]
+        (prometheus/with-duration
+          (prometheus/get-collector :cook/scheduler-match-cycle-duration-seconds {:pool pool-name})
+          (timers/time!
+            (timers/timer (metric-title "match-jobs-event" pool-name))
+            (tracing/with-span
+              [s {:name "scheduler.offer-handler.match-jobs" :tags {:pool pool-name :component tracing-component-tag}}]
+              (let [num-considerable @fenzo-num-considerable-atom
+                    next-considerable
+                    (try
+                      (let [
+                            ;; There are implications to generating the user->usage here:
+                            ;;  1. Currently cook has two oddities in state changes.
+                            ;;  We plan to correct both of these but are important for the time being.
+                            ;;    a. Cook doesn't mark as a job as running when it schedules a job.
+                            ;;       While this is technically correct, it confuses some process.
+                            ;;       For example, it will mean that the user->usage generated here
+                            ;;       may not include jobs that have been scheduled but haven't started.
+                            ;;       Since we do the filter for quota first, this is ok because those jobs
+                            ;;       show up in the queue. However, it is important to know about
+                            ;;    b. Cook doesn't update the job state when cook hears from mesos about the
+                            ;;       state of an instance. Cook waits until it hears from datomic about the
+                            ;;       instance state change to change the state of the job. This means that it
+                            ;;       is possible to have large delays between when an instance changes status
+                            ;;       and the job reflects that change
+                            ;;  2. Once the above two items are addressed, user->usage should always correctly
+                            ;;     reflect *Cook*'s understanding of the state of the world at this point.
+                            ;;     When this happens, users should never exceed their quota
+                            user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span
+                                                                          (generate-user-usage-map (d/db conn) pool-name)))
+                            ;; Try to clear the channel
+                            ;; Merge the pending offers from all compute clusters.
+                            compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
+                            offers (tracing/with-span
+                                     [s {:name "scheduler.offer-handler.generate-offers" :tags {:pool pool-name :component tracing-component-tag}}]
+                                     (apply concat (map (fn [compute-cluster]
+                                                          (try
+                                                            (cc/pending-offers compute-cluster pool-name)
+                                                            (catch Throwable t
+                                                              (log-structured/error "Error getting pending offers"
+                                                                                    {:pool pool-name
+                                                                                     :compute-cluster (cc/compute-cluster-name compute-cluster)}
+                                                                                    t)
+                                                              (list))))
+                                                        compute-clusters)))
+                            _ (tracing/with-span
+                                [s {:name "scheduler.offer-handler.cache-offers-for-rebalancer" :tags {:pool pool-name :component tracing-component-tag}}]
+                                (doseq [offer offers
+                                        :let [slave-id (-> offer :slave-id :value)]]
+                                  ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
+                                  ; Computing get-offer-attr-map is pretty expensive because it includes calculating
+                                  ; currently running pods, so we have to union the set of pods k8s says are there and
+                                  ; the set of pods we're trying to put on the node. Even though it's not used by
+                                  ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
+                                  ; and only store if it is a new node.
+                                  (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
+                                    (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
+                            using-pools? (not (nil? (config/default-pool)))
+                            user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
+                            user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
+                                                               :tags {:pool pool-name :component tracing-component-tag}}]
+                                                           @user->usage-future)
+                            matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
+                                                                   mesos-run-as-user user->usage user->quota
+                                                                   num-considerable offers
+                                                                   rebalancer-reservation-atom pool-name compute-clusters
+                                                                   job->acceptable-compute-clusters-fn)]
+                        (when (seq offers)
+                          (reset! resources-atom (view-incubating-offers fenzo)))
+                        ;; This check ensures that, although we value Fenzo's optimizations,
+                        ;; we also value Cook's sensibility of fairness when deciding which jobs
+                        ;; to schedule.  If Fenzo produces a set of matches that doesn't include
+                        ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
+                        ;; freedom in the form of fewer jobs to consider.
+                        (if matched-head?
+                          max-considerable
+                          (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
+                            (log-structured/info "Failed to match head, reducing number of considerable jobs"
+                                                 {:prev-considerable num-considerable
+                                                  :new-considerable new-considerable
+                                                  :pool pool-name})
+                            new-considerable)))
+                      (catch Exception e
+                        (log-structured/error "Offer handler encountered exception; continuing" {:pool pool-name} e)
+                        max-considerable))]
 
-              (if (= next-considerable 1)
-                (counters/inc! iterations-at-fenzo-floor)
-                (counters/clear! iterations-at-fenzo-floor))
+                (if (= next-considerable 1)
+                  (counters/inc! iterations-at-fenzo-floor)
+                  (counters/clear! iterations-at-fenzo-floor))
 
-              (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
-                (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
-                                     {:pool pool-name
-                                      :iterations-count (counters/value iterations-at-fenzo-floor)}))
+                (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
+                  (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
+                                       {:pool pool-name
+                                        :iterations-count (counters/value iterations-at-fenzo-floor)}))
 
-              (reset! fenzo-num-considerable-atom
-                      (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
-                        (do
-                          (log-structured/error (print-str "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                                                           "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
-                                                           "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                                                           "now give Fenzo" max-considerable "jobs to look at.")
-                                                {:pool pool-name
-                                                 :iterations-count (counters/value iterations-at-fenzo-floor)
-                                                 :number-max-considerable max-considerable})
-                          (meters/mark! fenzo-abandon-and-reset-meter)
-                          max-considerable)
-                        next-considerable)))))
+                (reset! fenzo-num-considerable-atom
+                        (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
+                          (do
+                            (log-structured/error (print-str "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                                                             "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
+                                                             "iterations, and still hasn't matched it.  Cook is now giving up and will "
+                                                             "now give Fenzo" max-considerable "jobs to look at.")
+                                                  {:pool pool-name
+                                                   :iterations-count (counters/value iterations-at-fenzo-floor)
+                                                   :number-max-considerable max-considerable})
+                            (meters/mark! fenzo-abandon-and-reset-meter)
+                            max-considerable)
+                          next-considerable))))))
         (log-structured/info "Done with offer matching" {:pool pool-name}))
       {:error-handler (fn [ex] (log-structured/error "Error occurred in match" {:pool pool-name} ex))})
     resources-atom))
@@ -1689,15 +1718,17 @@
   (tools/chime-at-ch
     trigger-chan
     (fn cancelled-task-killer-event []
-      (timers/time!
-        killing-cancelled-tasks-duration
-        (doseq [{:keys [db/id instance/task-id] :as task} (killable-cancelled-tasks (d/db conn))]
-          (log/info "Killing cancelled task" task-id)
-          @(d/transact conn [[:db/add id :instance/reason
-                              [:reason/name :reason-killed-by-user]]])
-          (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) task-id))))
-    {:error-handler (fn [e]
-                      (log/error e "Failed to kill cancelled tasks!"))}))
+      (prometheus/with-duration
+        (prometheus/get-collector :cook/scheduler-kill-cancelled-tasks-duration-seconds)
+        (timers/time!
+          killing-cancelled-tasks-duration
+          (doseq [{:keys [db/id instance/task-id] :as task} (killable-cancelled-tasks (d/db conn))]
+            (log/info "Killing cancelled task" task-id)
+            @(d/transact conn [[:db/add id :instance/reason
+                                [:reason/name :reason-killed-by-user]]])
+            (cc/kill-task-if-possible (cook.task/task-ent->ComputeCluster task) task-id))))
+      {:error-handler (fn [e]
+                        (log/error e "Failed to kill cancelled tasks!"))})))
 
 (defn get-user->used-resources
   "Return a map from user'name to his allocated resources, in the form of
@@ -1760,16 +1791,18 @@
   (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (tools/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
-        jobs (timers/time!
-               sort-jobs-duration
-               (->> tasks
-                    (group-by tools/task-ent->user)
-                    (map (fn [[user task-ents]] (let [sorted-tasks (sort task-comparator task-ents)]
-                                                  [user (limit-over-quota-jobs sorted-tasks (user->quota user))])))
-                    (into (hash-map))
-                    (sort-task-scored-task-pairs user->dru-divisors pool-name)
-                    (filter (fn [[task _]] (contains? pending-task-ents-set task)))
-                    (map (fn [[task _]] (:job/_instance task)))))]
+        jobs (prometheus/with-duration
+               (prometheus/get-collector :cook/scheduler-sort-jobs-hierarchy-duration-seconds {:pool pool-name})
+               (timers/time!
+                 sort-jobs-duration
+                 (->> tasks
+                      (group-by tools/task-ent->user)
+                      (map (fn [[user task-ents]] (let [sorted-tasks (sort task-comparator task-ents)]
+                                                    [user (limit-over-quota-jobs sorted-tasks (user->quota user))])))
+                      (into (hash-map))
+                      (sort-task-scored-task-pairs user->dru-divisors pool-name)
+                      (filter (fn [[task _]] (contains? pending-task-ents-set task)))
+                      (map (fn [[task _]] (:job/_instance task))))))]
     jobs))
 
 (defn- sort-normal-jobs-by-dru
@@ -1845,19 +1878,21 @@
   ;; TODO these limits should come from the largest observed host from Fenzo
   ;; .getResourceStatus on TaskScheduler will give a map of hosts to resources; we can compute the max over those
   [{max-memory-gb :memory-gb max-cpus :cpus} offensive-jobs-ch jobs]
-  (timers/time!
-    filter-offensive-jobs-duration
-    (let [max-memory-mb (* 1024.0 max-memory-gb)
-          is-offensive? (partial is-offensive? max-memory-mb max-cpus)
-          inoffensive (remove is-offensive? jobs)
-          offensive (filter is-offensive? jobs)]
-      ;; Put offensive jobs asynchronically such that it could return the
-      ;; inoffensive jobs immediately.
-      (async/go
-        (when (seq offensive)
-          (log/info "Found" (count offensive) "offensive jobs")
-          (async/>! offensive-jobs-ch offensive)))
-      inoffensive)))
+  (prometheus/with-duration
+    (prometheus/get-collector :cook/scheduler-filter-offensive-jobs-duration-seconds)
+    (timers/time!
+      filter-offensive-jobs-duration
+      (let [max-memory-mb (* 1024.0 max-memory-gb)
+            is-offensive? (partial is-offensive? max-memory-mb max-cpus)
+            inoffensive (remove is-offensive? jobs)
+            offensive (filter is-offensive? jobs)]
+        ;; Put offensive jobs asynchronically such that it could return the
+        ;; inoffensive jobs immediately.
+        (async/go
+          (when (seq offensive)
+            (log/info "Found" (count offensive) "offensive jobs")
+            (async/>! offensive-jobs-ch offensive)))
+        inoffensive))))
 
 (defn make-offensive-job-stifler
   "It returns an async channel which will be used to receive offensive jobs expected
@@ -1895,18 +1930,20 @@
 
    It ranks the jobs by dru first and then apply several filters if provided."
   [unfiltered-db offensive-job-filter]
-  (timers/time!
-    rank-jobs-duration
-    (try
-      (->> (sort-jobs-by-dru-pool unfiltered-db)
-           ;; Apply the offensive job filter first before taking.
-           (pc/map-vals offensive-job-filter)
-           (pc/map-vals #(map tools/job-ent->map %))
-           (pc/map-vals #(remove nil? %)))
-      (catch Throwable t
-        (log/error t "Failed to rank jobs")
-        (meters/mark! rank-jobs-failures)
-        {}))))
+  (prometheus/with-duration
+    (prometheus/get-collector :cook/scheduler-rank-cycle-duration-seconds)
+    (timers/time!
+      rank-jobs-duration
+      (try
+        (->> (sort-jobs-by-dru-pool unfiltered-db)
+             ;; Apply the offensive job filter first before taking.
+             (pc/map-vals offensive-job-filter)
+             (pc/map-vals #(map tools/job-ent->map %))
+             (pc/map-vals #(remove nil? %)))
+        (catch Throwable t
+          (log/error t "Failed to rank jobs")
+          (meters/mark! rank-jobs-failures)
+          {})))))
 
 (defn- start-jobs-prioritizer!
   [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
