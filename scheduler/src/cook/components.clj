@@ -209,7 +209,7 @@
   "Skip authentication on some hard-coded endpoints."
   [h auth-middleware]
   (let [auth-fn (auth-middleware h)
-        no-auth-pattern #"/(?:info|progress/[-\w]+)"]
+        no-auth-pattern #"/(?:info|metrics|progress/[-\w]+)"]
     (fn filtered-auth [{:keys [uri request-method] :as req}]
       (if (re-matches no-auth-pattern uri)
         (h req)
