@@ -713,7 +713,7 @@
           (->> pending-jobs
                (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
                                                     user->quota user->usage
-                                                    (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                                    (tools/global-pool-quota pool-name))
                (filter (fn [job] (tools/job-allowed-to-start? db job)))
                (filter launch-plugin/filter-job-launches)
                (take num-considerable)
@@ -1319,7 +1319,7 @@
                                                        (->> pool-name
                                                             (get @pool-name->pending-jobs-atom)
                                                             (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                                                                                 user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                                                                                 user->quota user->usage (tools/global-pool-quota pool-name))
                                                             (take max-jobs-for-autoscaling-scaled)
                                                             (doall)))
                   filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
