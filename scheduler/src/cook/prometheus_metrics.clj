@@ -20,6 +20,8 @@
   (:require [iapetos.core :as prometheus]
             [iapetos.export :as prometheus-export]))
 
+(def default-summary-quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01})
+
 (defonce registry
          ;; A global registry for all metrics reported by Cook.
          ;; All metrics must be registered before they can be recorded.
@@ -32,68 +34,68 @@
              ;; The quantiles are specified as a map of quantile to error margin.
              (prometheus/summary :cook/scheduler-rank-cycle-duration-seconds
                                  {:description "Distribution of rank cycle latency"
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-match-cycle-duration-seconds
                                  {:description "Distribution of overall match cycle latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-generate-user-usage-map-duration-seconds
                                  {:description "Distribution of generating user->usage map latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-handle-resource-offers-total-duration-seconds
                                  {:description "Distribution of total handle-resource-offers! duration"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-handle-resource-offers-pending-to-considerable-duration-seconds
                                  {:description "Distribution of filtering pending to considerable jobs duration"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-fenzo-schedule-once-duration-seconds
                                  {:description "Distribution of fenzo schedule once latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-handle-resource-offers-match-duration-seconds
                                  {:description "Distribution of matching resource offers to jobs latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-handle-resource-offers-matches-to-job-uuids-duration-seconds
                                  {:description "Distribution of generating matches->job-uuids map latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-launch-all-matched-tasks-total-duration-seconds
                                  {:description "Distribution of total launch all matched tasks latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-launch-all-matched-tasks-transact-duration-seconds
                                  {:description "Distribution of launch all matched tasks--transact in datomic latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-launch-all-matched-tasks-submit-duration-seconds
                                  {:description "Distribution of launch all matched tasks--submit to compute cluster latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-trigger-autoscaling-duration-seconds
                                  {:description "Distribution of trigger autoscaling latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-kill-cancelled-tasks-duration-seconds
                                  {:description "Distribution of kill cancelled tasks latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-sort-jobs-hierarchy-duration-seconds
                                  {:description "Distribution of sorting jobs by DRU latency"
                                   :labels [:pool]
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-filter-offensive-jobs-duration-seconds
                                  {:description "Distribution of filter offensive jobs latency"
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-handle-status-update-duaration-seconds
                                  {:description "Distribution of handle compute cluster status update latency"
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}})
+                                  :quantiles default-summary-quantiles})
              (prometheus/summary :cook/scheduler-handle-framework-message-duration-seconds
                                  {:description "Distribution of handle framework message latency"
-                                  :quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01}}))))
+                                  :quantiles default-summary-quantiles}))))
 
 (defn get-collector
   "Returns the named collector from the global registry (with the associated labels, if specified)."
@@ -104,7 +106,7 @@
 
 (defmacro with-duration
   "Wraps the given block and records its execution time to the given collector.
-  Since thi sfunction requires a collector, use get-collector to call it."
+  Since this function requires a collector, use get-collector to call it."
   {:arglists '([collector & body])}
   [collector & body]
   `(prometheus/with-duration ~collector ~@body))
