@@ -302,7 +302,7 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--max-runtime', help='maximum runtime for job',
                                dest='max-runtime', type=int, metavar='MILLIS')
     submit_parser.add_argument('--cpus', '-c', help='cpus (float) to reserve for job', type=float)
-    submit_parser.add_argument('--mem', '-m', help='memory (GB, int) to reserve for job', type=int)
+    submit_parser.add_argument('--mem', '-m', help='memory (MiB, int) to reserve for job', type=int)
     submit_parser.add_argument('--gpus', help='gpus (int) to reserve for job', type=check_positive)
     submit_parser.add_argument('--disk-request', help='disk request for job', type=float, dest='disk-request')
     submit_parser.add_argument('--disk-limit', help='disk limit (GB, float) for job', type=float, dest='disk-limit')
