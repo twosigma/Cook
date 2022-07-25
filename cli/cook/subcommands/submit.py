@@ -301,11 +301,11 @@ def register(add_parser, add_defaults):
                                dest='max-retries', type=int, metavar='COUNT')
     submit_parser.add_argument('--max-runtime', help='maximum runtime for job',
                                dest='max-runtime', type=int, metavar='MILLIS')
-    submit_parser.add_argument('--cpus', '-c', help='cpus to reserve for job', type=float)
-    submit_parser.add_argument('--mem', '-m', help='memory to reserve for job', type=int)
-    submit_parser.add_argument('--gpus', help='gpus to reserve for job', type=check_positive)
+    submit_parser.add_argument('--cpus', '-c', help='cpus (float) to reserve for job', type=float)
+    submit_parser.add_argument('--mem', '-m', help='memory (MiB, int) to reserve for job', type=int)
+    submit_parser.add_argument('--gpus', help='gpus (int) to reserve for job', type=check_positive)
     submit_parser.add_argument('--disk-request', help='disk request for job', type=float, dest='disk-request')
-    submit_parser.add_argument('--disk-limit', help='disk limit for job', type=float, dest='disk-limit')
+    submit_parser.add_argument('--disk-limit', help='disk limit (GB, float) for job', type=float, dest='disk-limit')
     submit_parser.add_argument('--disk-type', help='disk type for job', type=str, dest='disk-type')
     submit_parser.add_argument('--group', '-g', help='group uuid for job', type=str, metavar='UUID')
     submit_parser.add_argument('--group-name', '-G', help='group name for job',
