@@ -1600,7 +1600,7 @@
     (tools/chime-at-ch
      trigger-chan
      (fn pool-schedule-event []
-       (let [is-fenzo-pool? false ;; TODO(alexh): get this bool from config
+       (let [is-fenzo-pool? true ;; TODO(alexh): get this bool from config
              lower-tag (if is-fenzo-pool? "fenzo" "kubernetes")
              upper-tag (str/capitalize lower-tag)
              metric-name (str/join "-" [lower-tag "pool-schedule-event"])
