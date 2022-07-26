@@ -211,101 +211,101 @@
   [conn pool-name->fenzo-state status]
   (log/info "Instance status is:" status)
     (prometheus/with-duration
-      (prometheus/get-collector :cook/scheduler-handle-status-update-duaration-seconds)
-    (timers/time!
-      handle-status-update-duration
-      (try (let [db (db conn)
-                 {:keys [task-id reason task-state progress]} (interpret-task-status status)
-                 _ (when-not task-id
-                     (throw (ex-info "task-id is nil. Something unexpected has happened."
-                                     {:status status
-                                      :task-id task-id
-                                      :reason reason
-                                      :task-state task-state
-                                      :progress progress})))
-                 [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
-                                                                  :in $ ?task-id
-                                                                  :where
-                                                                  [?i :instance/task-id ?task-id]
-                                                                  [?i :instance/status ?s]
-                                                                  [?s :db/ident ?status]
-                                                                  [?j :job/instance ?i]]
-                                                                db task-id))
-                 job-ent (d/entity db job)
-                 instance-ent (d/entity db instance)
-                 previous-reason (reason/instance-entity->reason-entity db instance-ent)
-                 instance-status (condp contains? task-state
-                                   #{:task-staging} :instance.status/unknown
-                                   #{:task-starting
-                                     :task-running} :instance.status/running
-                                   #{:task-finished} :instance.status/success
-                                   #{:task-failed
-                                     :task-killed
-                                     :task-lost
-                                     :task-error} :instance.status/failed)
-                 prior-job-state (:job/state (d/entity db job))
-                 ^Date current-time (now)
-                 ^Date start-time (or (:instance/start-time instance-ent) current-time)
-                 instance-runtime (- (.getTime current-time) ; Used for reporting
-                                     (.getTime start-time))
-                 job-resources (tools/job-ent->resources job-ent)
-                 pool-name (cached-queries/job->pool-name job-ent)
-                 unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
-             (when (#{:instance.status/success :instance.status/failed} instance-status)
-               (if unassign-task-set
-                 (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
-                 (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
-                                       {:pool pool-name :task-id task-id})))
-             (when (= instance-status :instance.status/success)
-               (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
-               (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
-             (when (= instance-status :instance.status/failed)
-               (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
-               (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
-               (when-not previous-reason
-                 (update-reason-metrics! db task-id reason instance-runtime job-resources)))
-             (when-not (nil? instance)
-               (log/debug "Transacting updated state for instance" instance "to status" instance-status)
-               ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
-               ;; transaction; see the comment in the definition of :instance/update-state for more details
-               (let [transaction-chan (datomic/transact-with-retries
-                                        conn
-                                        (reduce
-                                          into
-                                          [[:instance/update-state
-                                            instance
-                                            instance-status
-                                            (or (:db/id previous-reason)
-                                                (reason/mesos-reason->cook-reason-entity-id db task-id reason)
-                                                [:reason.name :unknown])]]
-                                          [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                             [[:db/add
-                                               instance
-                                               :instance/reason
-                                               (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
-                                           (when (and (#{:instance.status/success
-                                                         :instance.status/failed} instance-status)
-                                                      (nil? (:instance/end-time instance-ent)))
-                                             [[:db/add instance :instance/end-time (now)]])
-                                           (when (and (#{:task-starting :task-running} task-state)
-                                                      (nil? (:instance/mesos-start-time instance-ent)))
-                                             [[:db/add instance :instance/mesos-start-time (now)]])
-                                           (when progress
-                                             [[:db/add instance :instance/progress progress]])]))]
-                 (async/go
-                   ; Wait for the transcation to complete before running the plugin
-                   (let [chan-result (async/<! transaction-chan)]
-                     (when (#{:instance.status/success :instance.status/failed} instance-status)
-                       (let [db (d/db conn)
-                             updated-job (d/entity db job)
-                             updated-instance (d/entity db instance)]
-                         (try
-                           (plugins/on-instance-completion completion/plugin updated-job updated-instance)
-                           (catch Exception e
-                             (log/error e "Error while running instance completion plugin.")))))
-                     chan-result)))))
-           (catch Exception e
-             (log/error e "Mesos scheduler status update error"))))))
+      prometheus/scheduler-handle-status-update-duaration {}
+      (timers/time!
+        handle-status-update-duration
+        (try (let [db (db conn)
+                   {:keys [task-id reason task-state progress]} (interpret-task-status status)
+                   _ (when-not task-id
+                       (throw (ex-info "task-id is nil. Something unexpected has happened."
+                                       {:status status
+                                        :task-id task-id
+                                        :reason reason
+                                        :task-state task-state
+                                        :progress progress})))
+                   [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
+                                                                    :in $ ?task-id
+                                                                    :where
+                                                                    [?i :instance/task-id ?task-id]
+                                                                    [?i :instance/status ?s]
+                                                                    [?s :db/ident ?status]
+                                                                    [?j :job/instance ?i]]
+                                                                  db task-id))
+                   job-ent (d/entity db job)
+                   instance-ent (d/entity db instance)
+                   previous-reason (reason/instance-entity->reason-entity db instance-ent)
+                   instance-status (condp contains? task-state
+                                     #{:task-staging} :instance.status/unknown
+                                     #{:task-starting
+                                       :task-running} :instance.status/running
+                                     #{:task-finished} :instance.status/success
+                                     #{:task-failed
+                                       :task-killed
+                                       :task-lost
+                                       :task-error} :instance.status/failed)
+                   prior-job-state (:job/state (d/entity db job))
+                   ^Date current-time (now)
+                   ^Date start-time (or (:instance/start-time instance-ent) current-time)
+                   instance-runtime (- (.getTime current-time) ; Used for reporting
+                                       (.getTime start-time))
+                   job-resources (tools/job-ent->resources job-ent)
+                   pool-name (cached-queries/job->pool-name job-ent)
+                   unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
+               (when (#{:instance.status/success :instance.status/failed} instance-status)
+                 (if unassign-task-set
+                   (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
+                   (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
+                                         {:pool pool-name :task-id task-id})))
+               (when (= instance-status :instance.status/success)
+                 (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
+                 (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
+               (when (= instance-status :instance.status/failed)
+                 (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
+                 (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
+                 (when-not previous-reason
+                   (update-reason-metrics! db task-id reason instance-runtime job-resources)))
+               (when-not (nil? instance)
+                 (log/debug "Transacting updated state for instance" instance "to status" instance-status)
+                 ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+                 ;; transaction; see the comment in the definition of :instance/update-state for more details
+                 (let [transaction-chan (datomic/transact-with-retries
+                                          conn
+                                          (reduce
+                                            into
+                                            [[:instance/update-state
+                                              instance
+                                              instance-status
+                                              (or (:db/id previous-reason)
+                                                  (reason/mesos-reason->cook-reason-entity-id db task-id reason)
+                                                  [:reason.name :unknown])]]
+                                            [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                               [[:db/add
+                                                 instance
+                                                 :instance/reason
+                                                 (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
+                                             (when (and (#{:instance.status/success
+                                                           :instance.status/failed} instance-status)
+                                                        (nil? (:instance/end-time instance-ent)))
+                                               [[:db/add instance :instance/end-time (now)]])
+                                             (when (and (#{:task-starting :task-running} task-state)
+                                                        (nil? (:instance/mesos-start-time instance-ent)))
+                                               [[:db/add instance :instance/mesos-start-time (now)]])
+                                             (when progress
+                                               [[:db/add instance :instance/progress progress]])]))]
+                   (async/go
+                     ; Wait for the transcation to complete before running the plugin
+                     (let [chan-result (async/<! transaction-chan)]
+                       (when (#{:instance.status/success :instance.status/failed} instance-status)
+                         (let [db (d/db conn)
+                               updated-job (d/entity db job)
+                               updated-instance (d/entity db instance)]
+                           (try
+                             (plugins/on-instance-completion completion/plugin updated-job updated-instance)
+                             (catch Exception e
+                               (log/error e "Error while running instance completion plugin.")))))
+                       chan-result)))))
+             (catch Exception e
+               (log/error e "Mesos scheduler status update error"))))))
 
 (defn write-sandbox-url-to-datomic
   "Takes a sandbox file server URL from the compute cluster and saves it to datomic."
@@ -339,7 +339,7 @@
    {:strs [exit-code progress-message progress-percent progress-sequence task-id] :as message}]
   (log/info "Received framework message:" {:task-id task-id, :message message})
   (prometheus/with-duration
-    (prometheus/get-collector :cook/scheduler-handle-framework-message-duration-seconds)
+    prometheus/scheduler-handle-framework-message-duration {}
     (timers/time!
       handle-framework-message-duration
       (try
@@ -648,7 +648,7 @@
                                          (locking fenzo
                                            (unassign-all pool-name unassigner to-unassign)
                                            (prometheus/with-duration
-                                             (prometheus/get-collector :cook/scheduler-fenzo-schedule-once-duration-seconds {:pool pool-name})
+                                             prometheus/scheduler-fenzo-schedule-once-duration {:pool pool-name}
                                              (timers/time!
                                                (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
                                                (.scheduleOnce fenzo requests leases)))))
@@ -696,7 +696,7 @@
   (tracing/with-span
     [s {:name "scheduler.generate-user-usage-map" :tags {:pool pool-name :component tracing-component-tag}}]
     (prometheus/with-duration
-      (prometheus/get-collector :cook/scheduler-generate-user-usage-map-duration-seconds {:pool pool-name})
+      prometheus/scheduler-generate-user-usage-map-duration {:pool pool-name}
       (timers/time!
         generate-user-usage-map-duration
         (->> (tools/get-running-task-ents unfiltered-db)
@@ -944,7 +944,7 @@
                             :pool pool-name
                             :number-tasks count-txns})
       (prometheus/with-duration
-        (prometheus/get-collector :cook/scheduler-launch-all-matched-tasks-total-duration-seconds {:pool pool-name})
+        prometheus/scheduler-launch-all-matched-tasks-total-duration {:pool pool-name}
         (timers/time!
           (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
           (try
@@ -955,7 +955,7 @@
             ;; be scheduled will not be eligible for rescheduling until
             ;; the pending-jobs atom is repopulated
             (prometheus/with-duration
-              (prometheus/get-collector :cook/scheduler-launch-all-matched-tasks-transact-duration-seconds {:pool pool-name})
+              prometheus/scheduler-launch-all-matched-tasks-transact-duration {:pool pool-name}
               (timers/time!
                 (timers/timer (metric-title "handle-resource-offer!-transact-task-duration" pool-name))
                 (datomic/transact
@@ -976,7 +976,7 @@
             ;; order to allow a transaction failure (due to failed preconditions)
             ;; to block the launch
             (prometheus/with-duration
-              (prometheus/get-collector :cook/scheduler-launch-all-matched-tasks-submit-duration-seconds {:pool pool-name})
+              prometheus/scheduler-launch-all-matched-tasks-submit-duration {:pool pool-name}
               (timers/time!
                 (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
                 (let [_ (log-structured/info "Launching matched tasks for compute cluster"
@@ -1067,7 +1067,7 @@
   (tracing/with-span
     [s {:name "scheduler.trigger-autoscaling" :tags {:component tracing-component-tag}}]
     (prometheus/with-duration
-      (prometheus/get-collector :cook/scheduler-trigger-autoscaling-duration-seconds {:pool pool-name})
+      prometheus/scheduler-trigger-autoscaling-duration {:pool pool-name}
       (timers/time!
         (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
         (try
@@ -1160,21 +1160,21 @@
     (tracing/with-span
       [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :component tracing-component-tag}}]
       (prometheus/with-duration
-        (prometheus/get-collector :cook/scheduler-handle-resource-offers-total-duration-seconds {:pool pool-name})
+        prometheus/scheduler-handle-resource-offers-total-duration {:pool pool-name}
         (timers/time!
           (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
           (try
             (let [db (db conn)
                   pending-jobs (get @pool-name->pending-jobs-atom pool-name)
                   considerable-jobs (prometheus/with-duration
-                                      (prometheus/get-collector :cook/scheduler-handle-resource-offers-pending-to-considerable-duration-seconds {:pool pool-name})
+                                      prometheus/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
                                       (timers/time!
                                         (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
                                         (pending-jobs->considerable-jobs
                                           db pending-jobs user->quota user->usage num-considerable pool-name)))
                   ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
                   {:keys [matches failures]} (prometheus/with-duration
-                                               (prometheus/get-collector :cook/scheduler-handle-resource-offers-match-duration-seconds {:pool pool-name})
+                                               prometheus/scheduler-handle-resource-offers-match-duration {:pool pool-name}
                                                (timers/time!
                                                  (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
                                                  (match-offer-to-schedule db fenzo-state considerable-jobs offers
@@ -1185,7 +1185,7 @@
                                          lease leases]
                                      (:offer lease))
                   matched-job-uuids (prometheus/with-duration
-                                      (prometheus/get-collector :cook/scheduler-handle-resource-offers-matches-to-job-uuids-duration-seconds {:pool pool-name})
+                                      prometheus/scheduler-handle-resource-offers-matches-to-job-uuids-duration {:pool pool-name}
                                       (timers/time!
                                         (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool-name))
                                         (matches->job-uuids matches pool-name)))
@@ -1414,7 +1414,7 @@
       (fn match-jobs-event []
         (log-structured/info "Starting offer matching" {:pool pool-name})
         (prometheus/with-duration
-          (prometheus/get-collector :cook/scheduler-match-cycle-duration-seconds {:pool pool-name})
+          prometheus/scheduler-match-cycle-duration {:pool pool-name}
           (timers/time!
             (timers/timer (metric-title "match-jobs-event" pool-name))
             (tracing/with-span
@@ -1719,7 +1719,7 @@
     trigger-chan
     (fn cancelled-task-killer-event []
       (prometheus/with-duration
-        (prometheus/get-collector :cook/scheduler-kill-cancelled-tasks-duration-seconds)
+        prometheus/scheduler-kill-cancelled-tasks-duration {}
         (timers/time!
           killing-cancelled-tasks-duration
           (doseq [{:keys [db/id instance/task-id] :as task} (killable-cancelled-tasks (d/db conn))]
@@ -1792,7 +1792,7 @@
         task-comparator (tools/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
         jobs (prometheus/with-duration
-               (prometheus/get-collector :cook/scheduler-sort-jobs-hierarchy-duration-seconds {:pool pool-name})
+               prometheus/scheduler-sort-jobs-hierarchy-duration {:pool pool-name}
                (timers/time!
                  sort-jobs-duration
                  (->> tasks
@@ -1879,7 +1879,7 @@
   ;; .getResourceStatus on TaskScheduler will give a map of hosts to resources; we can compute the max over those
   [{max-memory-gb :memory-gb max-cpus :cpus} offensive-jobs-ch jobs]
   (prometheus/with-duration
-    (prometheus/get-collector :cook/scheduler-filter-offensive-jobs-duration-seconds)
+    prometheus/scheduler-filter-offensive-jobs-duration {}
     (timers/time!
       filter-offensive-jobs-duration
       (let [max-memory-mb (* 1024.0 max-memory-gb)
@@ -1931,7 +1931,7 @@
    It ranks the jobs by dru first and then apply several filters if provided."
   [unfiltered-db offensive-job-filter]
   (prometheus/with-duration
-    (prometheus/get-collector :cook/scheduler-rank-cycle-duration-seconds)
+    prometheus/scheduler-rank-cycle-duration {}
     (timers/time!
       rank-jobs-duration
       (try
