@@ -20,6 +20,7 @@
   (:require [iapetos.core :as prometheus]
             [iapetos.export :as prometheus-export]))
 
+;; Quantiles are specified as a map of quantile to error margin.
 (def default-summary-quantiles {0.5 0.01 0.75 0.01 0.9 0.01 0.95 0.01 0.99 0.01 0.999 0.01})
 
 (defonce registry
