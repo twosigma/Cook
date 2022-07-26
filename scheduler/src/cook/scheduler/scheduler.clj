@@ -1138,7 +1138,7 @@
 (defn handle-resource-offers!
   "Given a list of offers from mesos, decide what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn fenzo-state pending-jobs mesos-run-as-user
+  [conn fenzo-state pending-jobs pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
    job->acceptable-compute-clusters-fn]
   (log-structured/debug "Invoked handle-resource-offers!" {:pool pool-name})
@@ -1381,7 +1381,7 @@
 
 (defn handle-fenzo-pool
   "TODO"
-  [conn fenzo fenzo-state resources-atom pending-jobs agent-attributes-cache max-considerable
+  [conn fenzo fenzo-state resources-atom pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
    scaleback floor-iterations-before-warn floor-iterations-before-reset rebalancer-reservation-atom
    mesos-run-as-user pool-name compute-clusters job->acceptable-compute-clusters-fn
    user->quota user->usage-future]
@@ -1415,7 +1415,7 @@
                 user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
                                                    :tags {:pool pool-name :component tracing-component-tag}}]
                               @user->usage-future)
-                matched-head? (handle-resource-offers! conn fenzo-state pending-jobs
+                matched-head? (handle-resource-offers! conn fenzo-state pending-jobs pool-name->pending-jobs-atom
                                                        mesos-run-as-user user->usage user->quota
                                                        num-considerable offers
                                                        rebalancer-reservation-atom pool-name compute-clusters
@@ -1620,7 +1620,7 @@
                     pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
                 (if is-fenzo-pool?
                   (handle-fenzo-pool conn fenzo fenzo-state resources-atom
-                                     pending-jobs agent-attributes-cache max-considerable
+                                     pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
                                      scaleback floor-iterations-before-warn floor-iterations-before-reset
                                      rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
                                      job->acceptable-compute-clusters-fn user->quota user->usage-future)

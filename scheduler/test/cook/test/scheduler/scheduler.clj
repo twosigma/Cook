@@ -2285,7 +2285,7 @@
                        {:pool/name "old pool"
                         :pool/state :pool.state/inactive}])
                     sched/make-fenzo-state (fn [_ _ _])
-                    sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
+                    sched/make-pool-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
                                                (tools/chime-at-ch
                                                  trigger-chan
                                                  (fn []
