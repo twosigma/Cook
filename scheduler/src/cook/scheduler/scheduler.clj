@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.scheduler
-  (:require [chime :refer [chime-at chime-ch]]
+  (:require [chime :refer [chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
             [clojure.core.async :as async]
@@ -24,8 +24,8 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
-            [cook.cached-queries :as cached-queries]
             [cook.cache :as ccache]
+            [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -61,10 +61,16 @@
             [opentracing-clj.core :as tracing]
             [plumbing.core :as pc])
   (:import (com.netflix.fenzo
-             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
-             VirtualMachineLease SchedulingResult VMAssignmentResult)
+             SchedulingResult
+             TaskAssignmentResult
+             TaskRequest
+             TaskScheduler
+             TaskScheduler$Builder
+             VMAssignmentResult
+             VirtualMachineCurrentState
+             VirtualMachineLease)
            (com.netflix.fenzo.functions Action1 Action2 Func1)
-           (java.util LinkedList Date)))
+           (java.util Date LinkedList)))
 
 (defn now
   ^Date []
@@ -1130,7 +1136,7 @@
     (counters/inc! cycle-unmatched number-unmatched-jobs)))
 
 (defn handle-resource-offers!
-  "Gets a list of offers from mesos. Decides what to do with them all--they should all
+  "Given a list of offers from mesos, decide what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
@@ -1374,142 +1380,60 @@
 (meters/defmeter [cook-mesos scheduler fenzo-abandon-and-reset-meter])
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
-(defn fenzo-handler
-  "TODO"
-  []
-  (try
-    (let [;; Try to clear the channel
-          ;; Merge the pending offers from all compute clusters.
-          compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
-          offers (tracing/with-span [s {:name "scheduler.offer-handler.generate-offers"
-                                        :tags {:pool pool-name :component tracing-component-tag}}]
-                   (apply concat (map (fn [compute-cluster]
-                                        (try
-                                          (cc/pending-offers compute-cluster pool-name)
-                                          (catch Throwable t
-                                            (log-structured/error "Error getting pending offers"
-                                                                  {:pool pool-name
-                                                                   :compute-cluster (cc/compute-cluster-name compute-cluster)}
-                                                                  t)
-                                            (list))))
-                                      compute-clusters)))
-          _ (tracing/with-span [s {:name "scheduler.offer-handler.cache-offers-for-rebalancer"
-                                   :tags {:pool pool-name :component tracing-component-tag}}]
-              (doseq [offer offers
-                      :let [slave-id (-> offer :slave-id :value)]]
-                                                 ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
-                                                 ; Computing get-offer-attr-map is pretty expensive because it includes calculating
-                                                 ; currently running pods, so we have to union the set of pods k8s says are there and
-                                                 ; the set of pods we're trying to put on the node. Even though it's not used by
-                                                 ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
-                                                 ; and only store if it is a new node.
-                (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
-                  (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
-          next-considerable (let [matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
-                                                                         mesos-run-as-user user->usage user->quota
-                                                                         num-considerable offers
-                                                                         rebalancer-reservation-atom pool-name compute-clusters
-                                                                         job->acceptable-compute-clusters-fn)]
-                              (when (seq offers)
-                                (reset! resources-atom (view-incubating-offers fenzo)))
-                      ;; This check ensures that, although we value Fenzo's optimizations,
-                      ;; we also value Cook's sensibility of fairness when deciding which jobs
-                      ;; to schedule.  If Fenzo produces a set of matches that doesn't include
-                      ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
-                      ;; freedom in the form of fewer jobs to consider.
-                              (if matched-head?
-                                max-considerable
-                                (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-                                  (log-structured/info "Failed to match head, reducing number of considerable jobs"
-                                                       {:prev-considerable num-considerable
-                                                        :new-considerable new-considerable
-                                                        :pool pool-name})
-                                  new-considerable)))]
-      (if (= next-considerable 1)
-        (counters/inc! iterations-at-fenzo-floor)
-        (counters/clear! iterations-at-fenzo-floor))
-      
-      (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
-        (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
-                             {:pool pool-name
-                              :iterations-count (counters/value iterations-at-fenzo-floor)}))
-
-      (reset! fenzo-num-considerable-atom
-              (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
-                (do
-                  (log-structured/error (print-str "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                                                   "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
-                                                   "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                                                   "now give Fenzo" max-considerable "jobs to look at.")
-                                        {:pool pool-name
-                                         :iterations-count (counters/value iterations-at-fenzo-floor)
-                                         :number-max-considerable max-considerable})
-                  (meters/mark! fenzo-abandon-and-reset-meter)
-                  max-considerable)
-                next-considerable)))
-    (catch Exception e
-      (log-structured/error "Fenzo offer handler encountered exception; continuing with max-considerable" {:pool pool-name} e)
-      max-considerable)))
-
-(defn kubernetes-handler
-  "TODO"
-  []
+(defn handle-kubernetes-scheduling!
+  "Gets a list of offers from mesos. Decides what to do with them all--they should all
+   be accepted or rejected at the end of the function."
+  [pool-name]
+  (log-structured/debug "Invoked handle-kubernetes-scheduling!" {:pool pool-name})
+  (tracing/with-span
+    [s {:name "scheduler.handle-kubernetes-scheduling"
+        :tags {:pool pool-name :component tracing-component-tag}}]
+    (timers/time!
+     (timers/timer (metric-title "handle-kubernetes-scheduling!-duration" pool-name))
+     ;; TODO: given pending-jobs, usage, quota, num-considerable, pool-name, etc
+     ;; compute and launch considerable jobs. Probably through same mechanism in 
+     ;; trigger-autoscaling!
+     ;; (trigger-autoscaling! filtered-autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn)
+     ;;
+     ;; To consider:
+     ;; 1. Repurpose autoscaling cluster-chooser to randomly? assign pod to cluster. (no backpressure yet)
+     ;; 2. clamp num-considerable to top 3 just for POC?
+     ))
   nil)
 
-(defn make-pool-resources-scheduler
-  "TODO"
-  [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
-   floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
+(defn make-kubernetes-handler
+  "Make the core scheduling loop for a Kubernetes pool"
+  [conn fenzo-state pool-name->pending-jobs-atom max-considerable trigger-chan pool-name 
+   cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))]
-    (reset! fenzo-num-considerable-atom max-considerable)
     (tools/chime-at-ch
      trigger-chan
-     (fn match-jobs-event []
-       (log-structured/info "Starting offer matching" {:pool pool-name})
+     (fn schedule-jobs-event []
+       (log-structured/info "Starting Kubernetes scheduler" {:pool pool-name})
        (timers/time!
-        (timers/timer (metric-title "match-jobs-event" pool-name))
-        (tracing/with-span [s {:name "scheduler.offer-handler.match-jobs"
-                               :tags {:pool pool-name :component tracing-component-tag}}]
-          (let [num-considerable @fenzo-num-considerable-atom]
-            (try
-              (let [;; There are implications to generating the user->usage here:
-                          ;;  1. Currently cook has two oddities in state changes.
-                          ;;  We plan to correct both of these but are important for the time being.
-                          ;;    a. Cook doesn't mark a job as running when it schedules it.
-                          ;;       While this is technically correct, it confuses some process.
-                          ;;       For example, it will mean that the user->usage generated here
-                          ;;       may not include jobs that have been scheduled but haven't started.
-                          ;;       Since we do the filter for quota first, this is ok because those jobs
-                          ;;       show up in the queue. However, it is important to know about
-                          ;;    b. Cook doesn't update the job state when cook hears from mesos about the
-                          ;;       state of an instance. Cook waits until it hears from datomic about the
-                          ;;       instance state change to change the state of the job. This means that it
-                          ;;       is possible to have large delays between when an instance changes status
-                          ;;       and the job reflects that change
-                          ;;  2. Once the above two items are addressed, user->usage should always correctly
-                          ;;     reflect *Cook*'s understanding of the state of the world at this point.
-                          ;;     When this happens, users should never exceed their quota
-                    user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span
-                                                 (generate-user-usage-map (d/db conn) pool-name)))
-                    using-pools? (not (nil? (config/default-pool)))
-                    user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-                    user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
-                                                       :tags {:pool pool-name :component tracing-component-tag}}]
-                                  @user->usage-future)]
-                ;; TODO
-                (if true
-                  (kubernetes-handler)
-                  (fenzo-handler)))
-              (catch Exception e
-                (log-structured/error "Pool resources scheduler encountered exception; continuing" {:pool pool-name} e))))))
-       (log-structured/info "Done with pool resources scheduling " {:pool pool-name}))
-     {:error-handler (fn [ex] (log-structured/error "Error occurred in pool resources scheduling" {:pool pool-name} ex))})
+        (timers/timer (metric-title "schedule-jobs-event" pool-name))
+        (tracing/with-span
+          [s {:name "scheduler.kubernetes-handler.schedule"
+              :tags {:pool pool-name :component tracing-component-tag}}]
+          (try
+            (let [user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span
+                                               (generate-user-usage-map (d/db conn) pool-name)))
+                  using-pools? (not (nil? (config/default-pool)))
+                  user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
+                  user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
+                                                     :tags {:pool pool-name :component tracing-component-tag}}]
+                                @user->usage-future)] 
+              (handle-kubernetes-scheduling! pool-name))
+            (catch Exception e
+              (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))))
+     {:error-handler (fn [ex] (log-structured/error "Error occurred in Kubernetes scheduler" {:pool pool-name} ex))})
+    ;; TODO(alexh): fix consumers of pool->resources-atom to handle pending pods in addition to offers.
+    ;; Until then, match the `make-offer-handler` and return with Fenzo's current pending offers (empty).
     resources-atom))
 
 (defn make-offer-handler
-  "Make the core scheduling loop for a pool"
+  "Make the core scheduling loop for a Fenzo pool"
   [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
@@ -2183,15 +2107,27 @@
           (util/lazy-load-var fn-name-from-config)
           job->acceptable-compute-clusters)
         pool->resources-atom (pool-map
-                               pools'
-                               (fn [{:keys [pool/name]}]
-                                 (make-pool-resources-scheduler
+                              pools'
+                              (fn [{:keys [pool/name]}]
+                                 ;; TODO(alexh): get this bool from config
+                                 ;; TODO(alexh): configure max-considered differently from Fenzo?
+                                (if true
+                                  (make-kubernetes-handler
+                                   conn
+                                   (get pool-name->fenzo-state name)
+                                   pool-name->pending-jobs-atom
+                                   fenzo-max-jobs-considered
+                                   (get pool->match-trigger-chan name)
+                                   name
+                                   cluster-name->compute-cluster-atom
+                                   job->acceptable-compute-clusters-fn)
+                                  (make-offer-handler
                                    conn (get pool-name->fenzo-state name)
                                    pool-name->pending-jobs-atom agent-attributes-cache
                                    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
                                    fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
                                    rebalancer-reservation-atom mesos-run-as-user name
-                                   cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
+                                   cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn))))]
     (prepare-match-trigger-chan match-trigger-chan pools')
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]

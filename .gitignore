@@ -46,3 +46,4 @@ jobclient/python/docs/build/
 *.egg-info/
 .clj-kondo/
 .lsp/
+*.calva/
