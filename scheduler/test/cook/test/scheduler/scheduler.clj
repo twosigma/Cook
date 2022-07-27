@@ -349,8 +349,8 @@
         (let [db (d/db conn)]
           ; 3 jobs running, so only capacity for a 4th job.
           ; We expect to double-count shared quota on both pools.
-          '(is (= [j2] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
-          '(is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+          (is (= [j2] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+          (is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
       (testing "Test on mem and cpu resources on individual pool."
         (with-redefs [config/pool-quotas
                       (constantly [{:pool-regex "a" :quota {:count 10 :mem 80 :cpus 2 :gpus 1000}}
