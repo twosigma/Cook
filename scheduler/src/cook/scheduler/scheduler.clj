@@ -1792,6 +1792,52 @@
        (pc/map-from-keys val-fn)
        (pc/map-keys :pool/name)))
 
+(defn aggregate-job-usage
+  "Given a list of resource usage dictionaries, add them together."
+  [list]
+  (reduce #(merge-with + %1 %2) {} list))
+
+(defn task-ents->usage
+  "Given a vector tasks ents, compute their aggregate resource usage"
+  [task-ents]
+  (->> task-ents
+       (map (fn [task-ent] (tools/job->usage (:job/_instance task-ent))))
+       aggregate-job-usage))
+
+(defn aggregate-quota-groups
+  "Given a map of quota groups and from pool-name to usage, generate aggregate usage."
+  [quota-groups pool-name->usage]
+  (->> pool-name->usage
+       (group-by #(quota-groups (first %)))
+       (filter first)
+       (pc/map-vals #(map second %))
+       (pc/map-vals aggregate-job-usage)))
+
+(defn filter-based-on-quota
+  "Filter a set of job entities to only those under the global pool quota (and global group quota)."
+  [pool-name->usage pool-name job-ents]
+  (let [quota-groups (config/quota-grouping-config)
+        quota-group (quota-groups pool-name)
+        agg-pool-name->usage (aggregate-quota-groups quota-groups pool-name->usage)
+        quota-group-usage (when quota-group (get agg-pool-name->usage quota-group))
+        quota-group-quota (when quota-group (tools/global-pool-quota quota-group))
+        quota (tools/global-pool-quota pool-name)
+        usage (pool-name->usage pool-name)]
+
+    (log/debug "Doing quota filtering at rank time"
+               {:pool-name pool-name
+                :quota-group-usage quota-group-usage
+                :quota-group-quota quota-group-quota
+                :usage  usage
+                :quota quota})
+    ; TODO: Should make filter-based-on-pool-quota take an argument of
+    ; 'available resources' then we can feed min and max and do only a single
+    ; filter pass
+    (cond->> job-ents
+             true (tools/filter-based-on-pool-quota pool-name quota usage)
+             (and quota-group-quota quota-group-usage)
+             (tools/filter-based-on-pool-quota pool-name quota-group-quota quota-group-usage))))
+
 (defn sort-jobs-by-dru-pool
   "Returns a map from job pool to a list of job entities, ordered by dru"
   [unfiltered-db]
@@ -1806,6 +1852,7 @@
                                                (tools/get-running-task-ents unfiltered-db))
         pools (->> unfiltered-db pool/all-pools (filter pool/schedules-jobs?))
         using-pools? (-> pools count pos?)
+        pool-name->usage (pc/map-vals task-ents->usage pool-name->running-task-ents)
         pool-name->user->dru-divisors (if using-pools?
                                         (pool-map pools (fn [{:keys [pool/name]}]
                                                           (share/create-user->share-fn unfiltered-db name)))
@@ -1823,7 +1870,9 @@
                     user->quota (quota/create-user->quota-fn unfiltered-db
                                                              (when using-pools? pool-name))
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))]
-                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name user->quota)]))]
+                [pool-name
+                 (filter-based-on-quota pool-name->usage  pool-name
+                                        (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name user->quota))]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
