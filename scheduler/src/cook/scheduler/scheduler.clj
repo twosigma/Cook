@@ -1138,7 +1138,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
+  [conn fenzo-state pending-jobs pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
    job->acceptable-compute-clusters-fn]
   (log-structured/debug "Invoked handle-resource-offers!" {:pool pool-name})
@@ -1150,7 +1150,7 @@
         (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
         (try
           (let [db (db conn)
-                pending-jobs (get @pool-name->pending-jobs-atom pool-name)
+                
                 considerable-jobs (timers/time!
                                     (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
                                     (pending-jobs->considerable-jobs
@@ -2067,7 +2067,7 @@
                 user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
                                                    :tags {:pool pool-name :component tracing-component-tag}}]
                               @user->usage-future)
-                matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
+                matched-head? (handle-resource-offers! conn fenzo-state pending-jobs pool-name->pending-jobs-atom
                                                        mesos-run-as-user user->usage user->quota
                                                        num-considerable offers
                                                        rebalancer-reservation-atom pool-name compute-clusters
@@ -2114,6 +2114,133 @@
                 max-considerable)
               next-considerable))))
 
+(defn- kubernetes-pool->task-txns
+  "Converts jobs and metadata to task transactions."
+  [compute-cluster->zip-job-metadata]
+  (for [[compute-cluster zip-job-metadata] compute-cluster->zip-job-metadata
+        {:keys [jobs task-metadata-seq]} zip-job-metadata
+        [job task-metadata] (map vector jobs task-metadata-seq)
+        :let [{:keys [job/last-waiting-start-time job/uuid]} job
+              {:keys [executor task-id]} task-metadata
+              job-ref [:job/uuid uuid]
+              instance-start-time (now)]]
+    [[:job/allowed-to-start? job-ref]
+     ;; NB we set any job with an instance in a non-terminal
+     ;; state to running to prevent scheduling the same job
+     ;; twice; see schema definition for state machine
+     [:db/add job-ref :job/state :job.state/running]
+     (cond->
+      {:db/id (d/tempid :db.part/user)
+       :job/_instance job-ref
+       :instance/executor executor
+       :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
+       :instance/hostname "fake-hostname"
+       :instance/ports "fake-ports"
+       :instance/preempted? false
+       :instance/progress 0
+       :instance/slave-id "fake-slave-id"
+       :instance/start-time instance-start-time
+       :instance/status :instance.status/unknown
+       :instance/task-id task-id
+       :instance/compute-cluster (cc/db-id compute-cluster)}
+       last-waiting-start-time
+       (assoc :instance/queue-time
+              (- (.getTime instance-start-time)
+                 (.getTime ^Date last-waiting-start-time))))]))
+
+(defn- kubernetes-pool->zip-job-metadata
+  "For each compute cluster, zip its considerble jobs and generated task-metadata-seq."
+  [compute-cluster->jobs jobs->task-id mesos-run-as-user]
+  (zipmap (keys compute-cluster->jobs)
+          (for [[compute-cluster jobs-for-cluster] compute-cluster->jobs
+                :let [task-metadata-seq (map
+                                         (fn [job]
+                                           (task/job->task-metadata compute-cluster mesos-run-as-user job (jobs->task-id job))) jobs-for-cluster)]]
+            {:jobs jobs-for-cluster
+             :task-metadata-seq task-metadata-seq})))
+
+(defn handle-kubernetes-pool
+  "Handle scheduling pending jobs onto Kubernetes compute clusters."
+  [conn pending-jobs pool-name->pending-jobs-atom
+   pool-name compute-clusters job->acceptable-compute-clusters-fn
+   user->quota user->usage-future num-considerable mesos-run-as-user]
+  (try
+    (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
+                                             :tags {:pool pool-name :component tracing-component-tag}}]
+                        @user->usage-future)
+          ;; We need to filter pending jobs based on quota so that we don't
+          ;; submit beyond what users have quota to actually run.
+          considerable-jobs (tracing/with-span [s {:name "scheduler.handle-kubernetes-pool.generate-considerable-jobs"
+                                                   :tags {:pool pool-name :component tracing-component-tag}}]
+                              (->> pool-name
+                                   pending-jobs
+                                   (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
+                                                                        user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                   (take num-considerable)
+                                   (doall)))
+          ;; TODO(alexh): really filter considerable-jobs for launch rate limit
+          jobs (take 3 considerable-jobs)
+          job-uuids (set (map :job/uuid jobs))]
+      (if (seq jobs)
+        (do
+          (swap! pool-name->pending-jobs-atom
+                 remove-matched-jobs-from-pending-jobs
+                 job-uuids pool-name)
+          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
+                                {:pool pool-name})
+          (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+                ;; First, distribute each job to a compute cluster
+                ;; TODO(alexh): confirm this is random
+                compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                       jobs pool-name autoscaling-compute-clusters
+                                       job->acceptable-compute-clusters-fn)
+                ;; Get a task-id (instance) for each job
+                jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)
+
+                ;; Combine jobs for each cluster with a fake task-metadata-seq
+                ;; This will be used to generate all db txns and then to launch the tasks.
+                compute-cluster->zip-job-metadata (kubernetes-pool->zip-job-metadata compute-cluster->jobs jobs->task-id mesos-run-as-user)
+
+                ;; Get sequence of db txns which update all jobs across compute-clusters. 
+                task-txns (kubernetes-pool->task-txns compute-cluster->zip-job-metadata)]
+            (log-structured/info "Started launching directly to Kubernetes" {:pool pool-name})
+            (->> compute-cluster->zip-job-metadata
+                 (map
+                  (fn [[compute-cluster zip-job-metadata]]
+                    (let [kill-lock-object (cc/kill-lock-object compute-cluster)]
+                      (try
+                        (.. kill-lock-object readLock lock)
+                        (timers/time!
+                         (timers/timer (metric-title "handle-kubernetes-pool-transact-task-duration" pool-name))
+                         (datomic/transact
+                          conn
+                          (reduce into [] task-txns)
+                          (fn [e]
+                            (log-structured/warn "Transaction timed out, so these tasks might be present"
+                                                 "in Datomic without actually having been launched in compute cluster"
+                                                 {:compute-cluster compute-cluster
+                                                  :pool pool-name}
+                                                 e)
+                            (throw e))))
+                        (timers/time!
+                         (timers/timer (metric-title "handle-kubernetes-pool-submit-duration" pool-name))
+                         (do
+                           (log-structured/info "Launching tasks for kubernetes ompute cluster"
+                                                {:pool pool-name :compute-cluster compute-cluster})
+                           (future (cc/launch-tasks compute-cluster
+                                                    pool-name
+                                                    [{:task-metadata-seq (:task-metadata-seq zip-job-metadata)}]
+                                             ;; TODO(alexh): any post processing such as updating launch rate limiting?
+                                                    (fn [_])))))
+                        (finally
+                          (.. kill-lock-object readLock unlock))))))
+                 doall
+                 (run! deref))
+            (log-structured/info "Done launching directly to Kubernetes" {:pool pool-name})))
+        (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
+    (catch Exception e
+      (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
+
 (defn make-pool-handler
   "Make the configured handler for the pool to do scheduling."
   [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
@@ -2134,21 +2261,15 @@
                using-pools? (not (nil? (config/default-pool)))
                user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
-           (handle-fenzo-pool conn fenzo fenzo-state resources-atom
-                              pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
-                              scaleback floor-iterations-before-warn floor-iterations-before-reset
-                              rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-                              job->acceptable-compute-clusters-fn user->quota user->usage-future)
-                ;; (if is-fenzo-pool?
-                ;;   (handle-fenzo-pool conn fenzo fenzo-state resources-atom
-                ;;                      pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
-                ;;                      scaleback floor-iterations-before-warn floor-iterations-before-reset
-                ;;                      rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-                ;;                      job->acceptable-compute-clusters-fn user->quota user->usage-future)
-                ;;   (handle-kubernetes-pool conn pending-jobs pool-name->pending-jobs-atom
-                ;;                           pool-name compute-clusters job->acceptable-compute-clusters-fn
-                ;;                           user->quota user->usage-future max-considerable mesos-run-as-user)))
-           )
+           (if is-fenzo-pool?
+             (handle-fenzo-pool conn fenzo fenzo-state resources-atom
+                                pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
+                                scaleback floor-iterations-before-warn floor-iterations-before-reset
+                                rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
+                                job->acceptable-compute-clusters-fn user->quota user->usage-future)
+             (handle-kubernetes-pool conn pending-jobs pool-name->pending-jobs-atom
+                                     pool-name compute-clusters job->acceptable-compute-clusters-fn
+                                     user->quota user->usage-future max-considerable mesos-run-as-user)))
          (catch Exception e
            (log-structured/error "Pool handler encountered exception; continuing" {:pool pool-name} e))))
      {:error-handler (fn [ex] (log-structured/error "Error occurred in pool handler" {:pool pool-name} ex))})
@@ -2190,13 +2311,6 @@
                                  fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
                                  rebalancer-reservation-atom mesos-run-as-user name
                                  cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
-                                ;;  (make-offer-handler
-                                ;;    conn (get pool-name->fenzo-state name)
-                                ;;    pool-name->pending-jobs-atom agent-attributes-cache
-                                ;;    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
-                                ;;    fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
-                                ;;    rebalancer-reservation-atom mesos-run-as-user name
-                                ;;    cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
     (prepare-match-trigger-chan match-trigger-chan pools')
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]

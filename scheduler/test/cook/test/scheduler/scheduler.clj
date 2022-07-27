@@ -1804,7 +1804,7 @@
                                           user->quota (or user-quota {test-user {:count 10, :cpus 70, :mem 32768, :gpus 10}})
                                           mesos-run-as-user nil
                                           result (sched/handle-resource-offers!
-                                                   conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
+                                                   conn fenzo-state (pool->pending-jobs pool) pool-name->pending-jobs-atom mesos-run-as-user
                                                    user->usage user->quota num-considerable offers
                                                    rebalancer-reservation-atom pool nil
                                                    sched/job->acceptable-compute-clusters)]
