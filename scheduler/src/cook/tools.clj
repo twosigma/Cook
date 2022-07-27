@@ -869,8 +869,8 @@
 
 (defn global-pool-quota
   "Given a pool name, determine the global quota for that pool across all users."
-  [quotas effective-pool-name]
-  (regexp-tools/match-based-on-pool-name quotas effective-pool-name :quota))
+  [effective-pool-name]
+  (regexp-tools/match-based-on-pool-name (config/pool-quotas) effective-pool-name :quota))
 
 (defn filter-based-on-user-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,

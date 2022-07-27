@@ -2401,7 +2401,7 @@
                                                (util/filter-pending-jobs-for-quota
                                                  pool-name (atom {}) (atom {}) (pool->user->quota pool-name)
                                                  (pool->user->usage pool-name)
-                                                 (util/global-pool-quota (config/pool-quotas) pool-name))
+                                                 (util/global-pool-quota pool-name))
                                                (take (::limit ctx)))))))))
 
 ;;
