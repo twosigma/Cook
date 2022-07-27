@@ -97,6 +97,10 @@ I tend to rename the module names. E.g., `cook-scheduler`.
 Now you should have an IDE where you can click around to find definitions and uses, in particular for Cook scheduler 
 as well as the integration tests.
 
+You want to teach Cursive about the main Cook macros. See https://cursive-ide.com/userguide/macros.html
+
+In particular, `mount.core/defstate` should map to `def`.
+
 ### Downloading datomic
 
 * Download the datomic jar datomic-free-0.9.5561.56.zip and put it in scheduler/datomic from https://clojars.org/com.datomic/datomic-free/versions/0.9.5561.56
