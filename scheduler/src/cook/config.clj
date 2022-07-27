@@ -737,3 +737,8 @@
 (defn constraint-attribute->transformation
   []
   (-> config :settings :constraint-attribute->transformation))
+
+(defn quota-grouping-config
+  "Configuration flags for grouping quota."
+  []
+  (-> config :settings :quota-grouping))
