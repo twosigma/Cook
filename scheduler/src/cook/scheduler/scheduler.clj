@@ -41,6 +41,7 @@
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
@@ -2159,7 +2160,7 @@
             {:jobs jobs-for-cluster
              :task-metadata-seq task-metadata-seq})))
 
-(defn handle-kubernetes-pool
+(defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs onto Kubernetes compute clusters."
   [conn pending-jobs pool-name->pending-jobs-atom
    pool-name compute-clusters job->acceptable-compute-clusters-fn
@@ -2241,6 +2242,11 @@
     (catch Exception e
       (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
 
+(defn is-kubernetes-scheduler-pool?
+  "Check if a given pool uses the Kubernetes Scheduler"
+  [kubernetes-scheduler-pools effective-pool-name]
+   (regexp-tools/match-based-on-pool-name kubernetes-scheduler-pools effective-pool-name :enabled :default-value false))
+
 (defn make-pool-handler
   "Make the configured handler for the pool to do scheduling."
   [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
@@ -2248,8 +2254,7 @@
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
-        ;; TODO(alexh): get this bool from config
-        is-fenzo-pool? true]
+        kubernetes-pool? (is-kubernetes-scheduler-pool? (config/kubernetes-scheduler-pools) pool-name)]
     (reset! fenzo-num-considerable-atom max-considerable)
     (tools/chime-at-ch
      trigger-chan
@@ -2261,15 +2266,15 @@
                using-pools? (not (nil? (config/default-pool)))
                user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
-           (if is-fenzo-pool?
+           (if kubernetes-pool?
+             (handle-kubernetes-scheduler-pool conn pending-jobs pool-name->pending-jobs-atom
+                                               pool-name compute-clusters job->acceptable-compute-clusters-fn
+                                               user->quota user->usage-future max-considerable mesos-run-as-user)
              (handle-fenzo-pool conn fenzo fenzo-state resources-atom
                                 pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
                                 scaleback floor-iterations-before-warn floor-iterations-before-reset
                                 rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-                                job->acceptable-compute-clusters-fn user->quota user->usage-future)
-             (handle-kubernetes-pool conn pending-jobs pool-name->pending-jobs-atom
-                                     pool-name compute-clusters job->acceptable-compute-clusters-fn
-                                     user->quota user->usage-future max-considerable mesos-run-as-user)))
+                                job->acceptable-compute-clusters-fn user->quota user->usage-future)))
          (catch Exception e
            (log-structured/error "Pool handler encountered exception; continuing" {:pool pool-name} e))))
      {:error-handler (fn [ex] (log-structured/error "Error occurred in pool handler" {:pool pool-name} ex))})

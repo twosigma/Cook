@@ -186,6 +186,18 @@
       (when-not (contains? valid-types default-type)
         (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not listed as a valid disk type") entry))))))
 
+(defn guard-invalid-kubernetes-scheduler-config
+  "Throws if the configuration for kubernetes scheduler is not properly formatted."
+  [kubernetes-scheduler]
+  (when :kubernetes-scheduler
+    (doseq [{:keys [enabled pool-regex max-jobs-considered] :as entry} kubernetes-scheduler]
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not enabled
+        (throw (ex-info (str "Enabled boolean is not defined") entry)))
+      (when-not max-jobs-considered
+        (throw (ex-info (str "Max jobs considered is not defined") entry))))))
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -442,19 +454,22 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
-              (guard-invalid-gpu-config (:valid-gpu-models pools))
-              (guard-invalid-disk-config (:disk pools))
-              (cond-> pools
-                (:job-resource-adjustment pools)
-                (update :job-resource-adjustment
-                        #(-> %
-                           (update :pool-regex re-pattern)))
-                (not (:default-containers pools))
-                (assoc :default-containers [])
-                (not (:default-env pools))
-                (assoc :default-env [])
-                (not (:quotas pools))
-                (assoc :quotas [])))
+                 (guard-invalid-gpu-config (:valid-gpu-models pools))
+                 (guard-invalid-disk-config (:disk pools))
+                 (guard-invalid-kubernetes-scheduler-config (:kubernetes-scheduler pools))
+                 (cond-> pools
+                   (:job-resource-adjustment pools)
+                   (update :job-resource-adjustment
+                           #(-> %
+                                (update :pool-regex re-pattern)))
+                   (not (:default-containers pools))
+                   (assoc :default-containers [])
+                   (not (:default-env pools))
+                   (assoc :default-env [])
+                   (not (:quotas pools))
+                   (assoc :quotas [])
+                   (not (:kubernetes-scheduler pools))
+                   (assoc :kubernetes-scheduler []))) 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
@@ -737,3 +752,8 @@
 (defn constraint-attribute->transformation
   []
   (-> config :settings :constraint-attribute->transformation))
+
+(defn kubernetes-scheduler-pools
+  "Returns configuration for kubernetes scheduler pools."
+  []
+  (-> config :settings :pools :kubernetes-scheduler))
