@@ -457,7 +457,6 @@
      :pools (fnk [[:config {pools nil}]]
                  (guard-invalid-gpu-config (:valid-gpu-models pools))
                  (guard-invalid-disk-config (:disk pools))
-                 (guard-invalid-kubernetes-scheduler-config (:kubernetes-scheduler pools))
                  (cond-> pools
                    (:job-resource-adjustment pools)
                    (update :job-resource-adjustment
@@ -468,9 +467,7 @@
                    (not (:default-env pools))
                    (assoc :default-env [])
                    (not (:quotas pools))
-                   (assoc :quotas [])
-                   (not (:kubernetes-scheduler pools))
-                   (assoc :kubernetes-scheduler []))) 
+                   (assoc :quotas []))) 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
@@ -549,6 +546,13 @@
                                     telemetry-tags-key-invalid-char-pattern
                                     (assoc :telemetry-tags-key-invalid-char-pattern
                                            (re-pattern telemetry-tags-key-invalid-char-pattern))))))
+     :kubernetes-scheduler (fnk [[:config {scheduler nil}]]
+                                (guard-invalid-kubernetes-scheduler-config (:kubernetes-scheduler scheduler))
+                                (merge
+                                 {:pool-regex ".*"
+                                  :enabled false
+                                  :max-considerable 1000}
+                                 (:kubernetes-scheduler scheduler))) 
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
                                :global-min-match-interval-millis 100
@@ -754,7 +758,7 @@
   []
   (-> config :settings :constraint-attribute->transformation))
 
-(defn kubernetes-scheduler-pools
-  "Returns configuration for kubernetes scheduler pools."
+(defn kubernetes-scheduler
+  "Returns configuration for using Kubernetes Scheduler."
   []
-  (-> config :settings :pools :kubernetes-scheduler))
+  (-> config :settings :scheduler :kubernetes-scheduler))
