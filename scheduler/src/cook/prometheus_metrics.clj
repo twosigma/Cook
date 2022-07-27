@@ -45,153 +45,82 @@
 (def scheduler-handle-status-update-duaration :cook/scheduler-handle-status-update-duaration-seconds)
 (def scheduler-handle-framework-message-duration :cook/scheduler-handle-framework-message-duration-seconds)
 
-(defonce registry
-         ;; A global registry for all metrics reported by Cook.
-         ;; All metrics must be registered before they can be recorded.
-         (-> (prometheus/collector-registry)
-           (prometheus/register
-             ;; Scheduler metrics --------------------------------------------------------------------------------------
-             ;; Note that we choose to use a summary instead of a histogram for the latency metrics because we only have
-             ;; one scheduler process running per cluster, so we do not need to aggregate data from multiple sources.
-             ;; The quantiles are specified as a map of quantile to error margin.
-             (prometheus/summary scheduler-rank-cycle-duration
-                                 {:description "Distribution of rank cycle latency"
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-match-cycle-duration
-                                 {:description "Distribution of overall match cycle latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-generate-user-usage-map-duration
-                                 {:description "Distribution of generating user->usage map latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-handle-resource-offers-total-duration
-                                 {:description "Distribution of total handle-resource-offers! duration"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-handle-resource-offers-pending-to-considerable-duration
-                                 {:description "Distribution of filtering pending to considerable jobs duration"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-fenzo-schedule-once-duration
-                                 {:description "Distribution of fenzo schedule once latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-handle-resource-offers-match-duration
-                                 {:description "Distribution of matching resource offers to jobs latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-handle-resource-offers-matches-to-job-uuids-duration
-                                 {:description "Distribution of generating matches->job-uuids map latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-launch-all-matched-tasks-total-duration
-                                 {:description "Distribution of total launch all matched tasks latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-launch-all-matched-tasks-transact-duration
-                                 {:description "Distribution of launch all matched tasks--transact in datomic latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-launch-all-matched-tasks-submit-duration
-                                 {:description "Distribution of launch all matched tasks--submit to compute cluster latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-trigger-autoscaling-duration
-                                 {:description "Distribution of trigger autoscaling latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-kill-cancelled-tasks-duration
-                                 {:description "Distribution of kill cancelled tasks latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-sort-jobs-hierarchy-duration
-                                 {:description "Distribution of sorting jobs by DRU latency"
-                                  :labels [:pool]
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-filter-offensive-jobs-duration
-                                 {:description "Distribution of filter offensive jobs latency"
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-handle-status-update-duaration
-                                 {:description "Distribution of handle compute cluster status update latency"
-                                  :quantiles default-summary-quantiles})
-             (prometheus/summary scheduler-handle-framework-message-duration
-                                 {:description "Distribution of handle framework message latency"
-                                  :quantiles default-summary-quantiles}))))
+(defn create-registry
+  []
+  (-> (prometheus/collector-registry)
+    (prometheus/register
+      ;; Scheduler metrics --------------------------------------------------------------------------------------
+      ;; Note that we choose to use a summary instead of a histogram for the latency metrics because we only have
+      ;; one scheduler process running per cluster, so we do not need to aggregate data from multiple sources.
+      ;; The quantiles are specified as a map of quantile to error margin.
+      (prometheus/summary scheduler-rank-cycle-duration
+                          {:description "Distribution of rank cycle latency"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-match-cycle-duration
+                          {:description "Distribution of overall match cycle latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-generate-user-usage-map-duration
+                          {:description "Distribution of generating user->usage map latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-handle-resource-offers-total-duration
+                          {:description "Distribution of total handle-resource-offers! duration"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-handle-resource-offers-pending-to-considerable-duration
+                          {:description "Distribution of filtering pending to considerable jobs duration"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-fenzo-schedule-once-duration
+                          {:description "Distribution of fenzo schedule once latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-handle-resource-offers-match-duration
+                          {:description "Distribution of matching resource offers to jobs latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-handle-resource-offers-matches-to-job-uuids-duration
+                          {:description "Distribution of generating matches->job-uuids map latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-launch-all-matched-tasks-total-duration
+                          {:description "Distribution of total launch all matched tasks latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-launch-all-matched-tasks-transact-duration
+                          {:description "Distribution of launch all matched tasks--transact in datomic latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-launch-all-matched-tasks-submit-duration
+                          {:description "Distribution of launch all matched tasks--submit to compute cluster latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-trigger-autoscaling-duration
+                          {:description "Distribution of trigger autoscaling latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-kill-cancelled-tasks-duration
+                          {:description "Distribution of kill cancelled tasks latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-sort-jobs-hierarchy-duration
+                          {:description "Distribution of sorting jobs by DRU latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-filter-offensive-jobs-duration
+                          {:description "Distribution of filter offensive jobs latency"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-handle-status-update-duaration
+                          {:description "Distribution of handle compute cluster status update latency"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-handle-framework-message-duration
+                          {:description "Distribution of handle framework message latency"
+                           :quantiles default-summary-quantiles}))))
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
-(mount/defstate registry
-                :start (-> (prometheus/collector-registry)
-                         (prometheus/register
-                           ;; Scheduler metrics --------------------------------------------------------------------------------------
-                           ;; Note that we choose to use a summary instead of a histogram for the latency metrics because we only have
-                           ;; one scheduler process running per cluster, so we do not need to aggregate data from multiple sources.
-                           ;; The quantiles are specified as a map of quantile to error margin.
-                           (prometheus/summary scheduler-rank-cycle-duration
-                                               {:description "Distribution of rank cycle latency"
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-match-cycle-duration
-                                               {:description "Distribution of overall match cycle latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-generate-user-usage-map-duration
-                                               {:description "Distribution of generating user->usage map latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-handle-resource-offers-total-duration
-                                               {:description "Distribution of total handle-resource-offers! duration"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-handle-resource-offers-pending-to-considerable-duration
-                                               {:description "Distribution of filtering pending to considerable jobs duration"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-fenzo-schedule-once-duration
-                                               {:description "Distribution of fenzo schedule once latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-handle-resource-offers-match-duration
-                                               {:description "Distribution of matching resource offers to jobs latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-handle-resource-offers-matches-to-job-uuids-duration
-                                               {:description "Distribution of generating matches->job-uuids map latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-launch-all-matched-tasks-total-duration
-                                               {:description "Distribution of total launch all matched tasks latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-launch-all-matched-tasks-transact-duration
-                                               {:description "Distribution of launch all matched tasks--transact in datomic latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-launch-all-matched-tasks-submit-duration
-                                               {:description "Distribution of launch all matched tasks--submit to compute cluster latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-trigger-autoscaling-duration
-                                               {:description "Distribution of trigger autoscaling latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-kill-cancelled-tasks-duration
-                                               {:description "Distribution of kill cancelled tasks latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-sort-jobs-hierarchy-duration
-                                               {:description "Distribution of sorting jobs by DRU latency"
-                                                :labels [:pool]
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-filter-offensive-jobs-duration
-                                               {:description "Distribution of filter offensive jobs latency"
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-handle-status-update-duaration
-                                               {:description "Distribution of handle compute cluster status update latency"
-                                                :quantiles default-summary-quantiles})
-                           (prometheus/summary scheduler-handle-framework-message-duration
-                                               {:description "Distribution of handle framework message latency"
-                                                :quantiles default-summary-quantiles}))))
+(mount/defstate registry :start (create-registry))
 
 (defmacro with-duration
   "Wraps the given block and records its execution time to the collector with the given name.

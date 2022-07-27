@@ -40,6 +40,8 @@
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.prometheus-metrics namespace.
+            [cook.prometheus-metrics]
             [cook.queue-limit :as queue-limit]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
             [cook.quota :as quota]
