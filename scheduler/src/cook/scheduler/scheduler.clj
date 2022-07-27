@@ -2271,12 +2271,12 @@
                using-pools? (not (nil? (config/default-pool)))
                user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
-           (if (not kubernetes-pool?)
-             (handle-kubernetes-scheduler-pool conn pending-jobs pool-name->pending-jobs-atom
-                                               pool-name compute-clusters job->acceptable-compute-clusters-fn
-                                               user->quota user->usage-future 
-                                               (get-max-considerable-for-kubernetes-pool (config/kubernetes-scheduler-pools) pool-name) 
-                                               mesos-run-as-user)
+           (if kubernetes-pool?
+            (handle-kubernetes-scheduler-pool conn pending-jobs pool-name->pending-jobs-atom
+                                              pool-name compute-clusters job->acceptable-compute-clusters-fn
+                                              user->quota user->usage-future
+                                              (get-max-considerable-for-kubernetes-pool (config/kubernetes-scheduler-pools) pool-name)
+                                              mesos-run-as-user)
              (handle-fenzo-pool conn fenzo fenzo-state resources-atom
                                 pending-jobs pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                                 scaleback floor-iterations-before-warn floor-iterations-before-reset

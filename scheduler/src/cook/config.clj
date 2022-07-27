@@ -470,7 +470,7 @@
                    (not (:quotas pools))
                    (assoc :quotas [])
                    (not (:kubernetes-scheduler pools))
-                   (assoc :kubernetes-scheduler [{:pool-regex ".*" :enabled true :max-jobs-considered 1000}]))) 
+                   (assoc :kubernetes-scheduler []))) 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
