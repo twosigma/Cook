@@ -2288,12 +2288,12 @@
                        {:pool/name "old pool"
                         :pool/state :pool.state/inactive}])
                     sched/make-fenzo-state (fn [_ _ _])
-                    sched/make-pool-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
-                                               (tools/chime-at-ch
-                                                 trigger-chan
-                                                 (fn []
-                                                   (swap! output-atom conj pool-name)
-                                                   (async/>!! send-next-chime-chan :next))))
+                    sched/make-pool-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _ _]
+                                              (tools/chime-at-ch
+                                               trigger-chan
+                                               (fn []
+                                                 (swap! output-atom conj pool-name)
+                                                 (async/>!! send-next-chime-chan :next))))
                     sched/start-jobs-prioritizer! (fn [_ _ _ _])
                     sched/prepare-match-trigger-chan (fn [_ _])]
         (sched/create-datomic-scheduler {:trigger-chans {:match-trigger-chan match-trigger-chan}})

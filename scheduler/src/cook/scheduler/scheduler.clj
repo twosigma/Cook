@@ -2244,18 +2244,23 @@
 
 (defn is-kubernetes-scheduler-pool?
   "Check if a given pool uses the Kubernetes Scheduler"
-  [kubernetes-scheduler-pools effective-pool-name]
-   (regexp-tools/match-based-on-pool-name kubernetes-scheduler-pools effective-pool-name :enabled :default-value false))
+  [kubernetes-scheduler-pools pool-name]
+   (regexp-tools/match-based-on-pool-name kubernetes-scheduler-pools pool-name :enabled :default-value false))
+
+(defn get-max-considerable-for-kubernetes-pool
+  "Get max considerable value for a Kubernetes Scheduler pool."
+  [kubernetes-scheduler-pools pool-name]
+  (regexp-tools/match-based-on-pool-name kubernetes-scheduler-pools pool-name :max-considerable))
 
 (defn make-pool-handler
   "Make the configured handler for the pool to do scheduling."
-  [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache max-considerable scaleback
+  [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
+   mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
+   kubernetes-pool?]
   (let [fenzo (:fenzo fenzo-state)
-        resources-atom (atom (view-incubating-offers fenzo))
-        kubernetes-pool? (is-kubernetes-scheduler-pool? (config/kubernetes-scheduler-pools) pool-name)]
-    (reset! fenzo-num-considerable-atom max-considerable)
+        resources-atom (atom (view-incubating-offers fenzo))]
+    (reset! fenzo-num-considerable-atom fenzo-max-jobs-considered)
     (tools/chime-at-ch
      trigger-chan
      (fn pool-schedule-event []
@@ -2266,12 +2271,14 @@
                using-pools? (not (nil? (config/default-pool)))
                user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
-           (if kubernetes-pool?
+           (if (not kubernetes-pool?)
              (handle-kubernetes-scheduler-pool conn pending-jobs pool-name->pending-jobs-atom
                                                pool-name compute-clusters job->acceptable-compute-clusters-fn
-                                               user->quota user->usage-future max-considerable mesos-run-as-user)
+                                               user->quota user->usage-future 
+                                               (get-max-considerable-for-kubernetes-pool (config/kubernetes-scheduler-pools) pool-name) 
+                                               mesos-run-as-user)
              (handle-fenzo-pool conn fenzo fenzo-state resources-atom
-                                pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
+                                pending-jobs pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                                 scaleback floor-iterations-before-warn floor-iterations-before-reset
                                 rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
                                 job->acceptable-compute-clusters-fn user->quota user->usage-future)))
@@ -2315,7 +2322,8 @@
                                  fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
                                  fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
                                  rebalancer-reservation-atom mesos-run-as-user name
-                                 cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
+                                 cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
+                                 (is-kubernetes-scheduler-pool? (config/kubernetes-scheduler-pools) name))))]
     (prepare-match-trigger-chan match-trigger-chan pools')
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]

@@ -195,6 +195,7 @@
         (throw (ex-info (str "pool-regex key is missing from config") entry)))
       (when-not enabled
         (throw (ex-info (str "Enabled boolean is not defined") entry)))
+      ;; TODO(alexh): TBD if we want a separate batch size per pool
       (when-not max-jobs-considered
         (throw (ex-info (str "Max jobs considered is not defined") entry))))))
 
@@ -469,7 +470,7 @@
                    (not (:quotas pools))
                    (assoc :quotas [])
                    (not (:kubernetes-scheduler pools))
-                   (assoc :kubernetes-scheduler []))) 
+                   (assoc :kubernetes-scheduler [{:pool-regex ".*" :enabled true :max-jobs-considered 1000}]))) 
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
