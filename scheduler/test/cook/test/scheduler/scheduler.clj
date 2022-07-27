@@ -219,6 +219,16 @@
         {:scheduled scheduled :result result})
       {:result result})))
 
+(deftest test-aggregate-quota-groups
+  (setup)
+  (is (= {"s" {:count 300 :cpus 30 :mem 3}}
+         (sched/aggregate-quota-groups
+           {"a" "s" "b" "s"}
+           {"a" {:mem 1 :cpus 10 :count 100}
+            "b" {:mem 2 :cpus 20 :count 200}
+            "c" {:mem 4 :cpus 40 :count 400}
+            "d" {:mem 8 :cpus 80 :count 800}}))))
+
 (deftest test-sort-jobs-by-dru-pool
   (setup)
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
@@ -304,6 +314,88 @@
             wj5 (create-dummy-job conn :user "test" :job-state :job.state/waiting)
             test-db (d/db conn)]
         (is (= [wj1 wj2 wj3] (map :db/id (get (sched/sort-jobs-by-dru-pool test-db) "no-pool"))))))))
+
+(deftest test-rank-obeys-group-global-quota
+  (setup :config {:quota-grouping {"a" "s" "b" "s"}})
+  (let [uri "datomic:mem://test-sort-jobs-by-dru-global-pool-quota"
+        conn (restore-fresh-database! uri)
+        _ (create-pool conn "a")
+        _ (create-pool conn "b")
+        j1 (create-dummy-job conn :user "ljin" :pool "a" :ncpus 1.0 :memory 30.0 :job-state :job.state/running)
+        j2 (create-dummy-job conn :user "ljin" :pool "a" :ncpus 1.0 :memory 50.0)
+        j3 (create-dummy-job conn :user "ljin" :pool "a" :ncpus 1.0 :memory 20.0)
+        j4 (create-dummy-job conn :user "ljin" :pool "a" :ncpus 5.0 :memory 5.0)
+        j5 (create-dummy-job conn :user "ljin" :pool "b" :ncpus 6.0 :memory 6.0 :job-state :job.state/running)
+        j6 (create-dummy-job conn :user "ljin" :pool "b" :ncpus 5.0 :memory 5.0)
+        j7 (create-dummy-job conn :user "ljin" :pool "b" :ncpus 5.0 :memory 10.0 :job-state :job.state/running)
+        j8 (create-dummy-job conn :user "ljin" :pool "b" :ncpus 5.0 :memory 10.0)
+        _ (create-dummy-instance conn j1)
+        _ (create-dummy-instance conn j5)
+        _ (create-dummy-instance conn j7)]
+
+    (testing "Not hit any quota limits on any pool."
+      (with-redefs [config/pool-quotas
+                    (constantly [{:pool-regex "a" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "b" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "s" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}])]
+        (let [db (d/db conn)]
+          (is (= [j2 j3 j4] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+          (is (= [j6 j8] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+    (testing "Quota group pool has quota limit, restricting launches"
+      (with-redefs [config/pool-quotas
+                    (constantly [{:pool-regex "a" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "b" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "s" :quota {:count 4 :mem 10000 :cpus 10000 :gpus 1000}}])]
+        (let [db (d/db conn)]
+          ; 3 jobs running, so only capacity for a 4th job.
+          ; We expect to double-count shared quota on both pools.
+          '(is (= [j2] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+          '(is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+      (testing "Test on mem and cpu resources on individual pool."
+        (with-redefs [config/pool-quotas
+                      (constantly [{:pool-regex "a" :quota {:count 10 :mem 80 :cpus 2 :gpus 1000}}
+                                   {:pool-regex "b" :quota {:count 10 :mem 21 :cpus 16 :gpus 1000}}
+                                   {:pool-regex "s" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}])]
+          (let [db (d/db conn)]
+            (is (= [j2] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+            (is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+
+    (testing "Test on mem and cpu resources on individual pool."
+        (with-redefs [config/pool-quotas
+                      (constantly [{:pool-regex "a" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                   {:pool-regex "b" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                   {:pool-regex "s" :quota {:count 10 :mem 96.1 :cpus 17.1 :gpus 1000}}])]
+          (let [db (d/db conn)]
+            ; Running is 12 cores and 46gb.
+            ; We expect to double-count shared quota on both pools.
+            (is (= [j2] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+            (is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+
+    (testing "Hit the pool b quota."
+      (with-redefs [config/pool-quotas
+                    (constantly [{:pool-regex "a" :quota {:count 4 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "b" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "s" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}])]
+      (let [db (d/db conn)]
+        (is (= [j2 j3 j4] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+        (is (= [j6 j8] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+   (testing "Hit the pool b quota."
+      (with-redefs [config/pool-quotas
+                    (constantly [{:pool-regex "a" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "b" :quota {:count 3 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "s" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}])]
+        (let [db (d/db conn)]
+          (is (= [j2 j3 j4] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+          (is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))
+    (testing "Hit both pool quota."
+      (with-redefs [config/pool-quotas
+                    (constantly [{:pool-regex "a" :quota {:count 4 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "b" :quota {:count 3 :mem 10000 :cpus 10000 :gpus 1000}}
+                                 {:pool-regex "s" :quota {:count 10 :mem 10000 :cpus 10000 :gpus 1000}}])]
+        (let [db (d/db conn)]
+          (is (= [j2 j3 j4] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "a"))))
+          (is (= [j6] (map :db/id (get (sched/sort-jobs-by-dru-pool db) "b")))))))))
+
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
