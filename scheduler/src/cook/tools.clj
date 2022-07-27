@@ -867,6 +867,13 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
       gpus (assoc :gpus gpus))))
 
+(defn all-and-quota-group-pools
+  "Return a list of all pools and all quota grouping pools"
+  [db]
+  (-> #{}
+      (into (map :pool/name (pool/all-pools db)))
+      (into (vals (config/quota-grouping-config)))))
+
 (defn global-pool-quota
   "Given a pool name, determine the global quota for that pool across all users."
   [quotas effective-pool-name]
