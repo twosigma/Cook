@@ -90,7 +90,7 @@
                                :memory-gb 140
                                :cpus 40
                                :retry-limit 5})
-(def default-kubernetes-scheduler-config {:pools-regex "$^"
+(def default-kubernetes-scheduler-config {:pool-regex "$^"
                                           :max-considerable 1000})
 
 (defmacro with-cook-scheduler

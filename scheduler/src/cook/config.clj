@@ -547,9 +547,9 @@
      :kubernetes-scheduler (fnk [[:config {scheduler nil}]]
                                 (guard-invalid-kubernetes-scheduler-config (:kubernetes-scheduler scheduler))
                                 (merge
-                                 {:pool-regex ".*"
+                                 {:pool-regex "$^"
                                   :max-considerable 1000}
-                                 (:kubernetes-scheduler scheduler))) 
+                                 (:kubernetes-scheduler scheduler)))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
                                :global-min-match-interval-millis 100

@@ -2247,7 +2247,7 @@
   [kubernetes-scheduler-config pool-name]
   (let [pools-pattern (-> kubernetes-scheduler-config
                           :pool-regex
-                                     re-pattern)]
+                          re-pattern)]
     (re-find pools-pattern pool-name)))
 
 (defn max-considerable-for-kubernetes-scheduler-pool
@@ -2263,7 +2263,7 @@
    kubernetes-scheduler-config]
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
-        kubernetes-scheduler-pool? (not (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name))]
+        kubernetes-scheduler-pool? (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)]
     (reset! fenzo-num-considerable-atom fenzo-max-jobs-considered)
     (tools/chime-at-ch
      trigger-chan
