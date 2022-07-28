@@ -20,6 +20,7 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.pprint :as pprint]
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
@@ -2494,15 +2495,19 @@
       compute-cluster-3 {:cluster-definition
                          {:config {:location location-a}}
                          :name compute-cluster-3-name}
-      instance-first {:instance/compute-cluster
+      instance-1 {:instance/compute-cluster
                       {:compute-cluster/cluster-name
                        compute-cluster-2-name}
                       :instance/start-time 1}
-      instance-second {:instance/compute-cluster
+      instance-2 {:instance/compute-cluster
                        {:compute-cluster/cluster-name
                         compute-cluster-1-name}
                        :instance/start-time 2}
-      instances [instance-second instance-first]]
+      instance-3 {:instance/compute-cluster
+                       {:compute-cluster/cluster-name
+                        compute-cluster-1-name}
+                       :instance/start-time 2}
+      instances [instance-1 instance-2]]
 
   (deftest test-job->preferred-compute-clusters
     (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
@@ -2520,7 +2525,7 @@
     (is (= [compute-cluster-2]
            (sched/job->acceptable-compute-clusters
             {:job/checkpoint true
-             :job/instance [instance-first]}
+             :job/instance [instance-1]}
             [compute-cluster-1
              compute-cluster-2
              compute-cluster-3])))
@@ -2584,27 +2589,31 @@
         {compute-cluster-1-name compute-cluster-1
          compute-cluster-2-name compute-cluster-2
          compute-cluster-3-name compute-cluster-3})
-    (let [base-job {:job/checkpoint true}]
-      (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
-            job2 (assoc base-job :job/uuid (UUID/randomUUID))
-            job3 (assoc base-job :job/uuid (UUID/randomUUID))
-            jobs [job1 job2 job3]
-            compute-cluster->jobs (sched/distribute-jobs-to-compute-clusters
-                                   jobs
-                                   "test-pool"
-                                   [compute-cluster-1
-                                    compute-cluster-2
-                                    compute-cluster-3]
-                                   sched/job->acceptable-compute-clusters)
-            jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)
-            mesos-run-as-user "user"]
-        
-        (println "@ALEX@")
-        
-        (println (sched/kubernetes-pool->zip-job-metadata
-                  compute-cluster->jobs
-                  jobs->task-id
-                  mesos-run-as-user))
+    (with-redefs [cc/use-cook-executor? (fn [_] false)]
+      (let [base-job {:job/checkpoint true}]
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
+              job2 (assoc base-job :job/uuid (UUID/randomUUID))
+              job3 (assoc base-job :job/uuid (UUID/randomUUID))
+              jobs [job1 job2 job3]
+              compute-cluster->jobs (sched/distribute-jobs-to-compute-clusters
+                                     jobs
+                                     "test-pool"
+                                     [compute-cluster-1
+                                      compute-cluster-2
+                                      compute-cluster-3]
+                                     sched/job->acceptable-compute-clusters)
+              jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)
+              mesos-run-as-user "user"]
+          
+          ;; TODOL count(jobs) == count(metadata)
+          ;; TODO: for each job, get metadata where (metadata :environment "COOK_JOB_UUID" == (job (str uuid)))
+
+          (println "@ALEX@")
+
+          (pprint/pprint (sched/kubernetes-pool->zip-job-metadata
+                    compute-cluster->jobs
+                    jobs->task-id
+                    mesos-run-as-user))
 
 
 
@@ -2617,6 +2626,9 @@
         ;;                compute-cluster-2
         ;;                compute-cluster-3]
         ;;               sched/job->acceptable-compute-clusters))))
-        ))
+          ))
+      
+    )
+    
     
     ))
