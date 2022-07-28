@@ -30,10 +30,9 @@
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [cook.util :as util]
-            [datomic.api :as d :refer [q]]
+            [datomic.api :as d]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :refer [db]]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [plumbing.core :refer [map-from-keys]]
@@ -171,12 +170,13 @@
    progress-config               -- map, config for progress publishing. See scheduler/docs/configuration.adoc
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
+   kubernetes-scheduler-config   -- map, config for using Kubernetes Scheduler
    sandbox-syncer-state          -- map, representing the sandbox syncer object
-   api-only?                     -- bool, true if this instance should not actually join the leader selection"
+   api-only?                     -- bool, true if this instance should not actually join the leader selection" 
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
            mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
-           zk-prefix api-only?]}]
+           zk-prefix api-only? kubernetes-scheduler-config]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
@@ -223,7 +223,8 @@
                                        :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                        :rebalancer-reservation-atom rebalancer-reservation-atom
                                        :task-constraints task-constraints
-                                       :trigger-chans trigger-chans})]
+                                       :trigger-chans trigger-chans
+                                       :kubernetes-scheduler-config kubernetes-scheduler-config})]
                                 ; we need to make sure to initialize cc/pool-name->fenzo-state-atom before we take leadership
                                 ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-state-atom
                                 ; needs to be set

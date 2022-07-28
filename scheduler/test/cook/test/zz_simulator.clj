@@ -4,7 +4,6 @@
 (ns cook.test.zz-simulator
   (:gen-class)
   (:require [cheshire.core :as cheshire]
-            [chime :refer [chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
@@ -16,21 +15,22 @@
             [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
             [clojure.walk :refer [keywordize-keys]]
-            [com.rpl.specter :refer [ALL FIRST MAP-KEYS MAP-VALS select transform]]
+            [com.rpl.specter :refer [ALL MAP-KEYS MAP-VALS transform]]
             [cook.config :refer [executor-config init-logger]]
             [cook.datomic :as datomic]
             [cook.mesos :as c]
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.mesos-mock :as mm]
             [cook.plugins.completion :as completion]
-            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
+            [cook.test.postgres]
+            [cook.test.testutil :as testutil :refer [poll-until
+                                                     restore-fresh-database!]]
             [cook.tools :as util]
             [datomic.api :as d]
-            [plumbing.core :refer [map-from-vals map-keys map-vals]])
+            [plumbing.core :refer [map-vals]])
   (:import (java.util Date)
            (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.curator.framework CuratorFrameworkFactory)
@@ -90,6 +90,8 @@
                                :memory-gb 140
                                :cpus 40
                                :retry-limit 5})
+(def default-kubernetes-scheduler-config {:pools-regex "$^"
+                                          :max-considerable 1000})
 
 (defmacro with-cook-scheduler
   [conn make-mesos-driver-fn scheduler-config trigger-matching? & body]
@@ -150,7 +152,8 @@
                                                               {}
                                                               cook.rate-limit/AllowAllRateLimiter
                                                               (ReentrantReadWriteLock. true)))
-         prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
+         prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan
+         kubernetes-scheduler-config# (merge default-kubernetes-scheduler-config (:kubernetes-scheduler ~scheduler-config))]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op
@@ -185,7 +188,8 @@
             :task-constraints task-constraints#
             :trigger-chans trigger-chans#
             :zk-prefix zk-prefix#
-            :api-only false})
+            :api-only false
+            :kubernetes-scheduler-config kubernetes-scheduler-config#})
          (do ~@body))
        (finally
          (.close curator-framework#)
