@@ -2419,36 +2419,36 @@
     (is (= [compute-cluster-1
             compute-cluster-3]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint true
-              :job/instance instances}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3])))
+            {:job/checkpoint true
+             :job/instance instances}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3])))
     (is (= [compute-cluster-2]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint true
-              :job/instance [instance-first]}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3])))
+            {:job/checkpoint true
+             :job/instance [instance-first]}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3])))
     (is (= [compute-cluster-1
             compute-cluster-2
             compute-cluster-3]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint true
-              :job/instance []}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3])))
+            {:job/checkpoint true
+             :job/instance []}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3])))
     (is (= [compute-cluster-1
             compute-cluster-2
             compute-cluster-3]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint false
-              :job/instance instances}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3]))))
+            {:job/checkpoint false
+             :job/instance instances}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3]))))
 
   (deftest test-distribute-jobs-to-compute-clusters
     (testutil/setup)
@@ -2462,26 +2462,68 @@
             job1 (assoc base-job :job/uuid uuid)]
         (is (= (list [job1])
                (vals (sched/distribute-jobs-to-compute-clusters
-                       [job1]
-                       "test-pool"
-                       [compute-cluster-1
-                        compute-cluster-2
-                        compute-cluster-3]
-                       sched/job->acceptable-compute-clusters)))))
+                      [job1]
+                      "test-pool"
+                      [compute-cluster-1
+                       compute-cluster-2
+                       compute-cluster-3]
+                      sched/job->acceptable-compute-clusters)))))
       (testing "max-jobs-for-autoscaling=0"
         (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
           (is (= {}
                  (sched/distribute-jobs-to-compute-clusters
-                   []
-                   "test-pool"
-                   [compute-cluster-1
-                    compute-cluster-2
-                    compute-cluster-3]
-                   sched/job->acceptable-compute-clusters)))))
+                  []
+                  "test-pool"
+                  [compute-cluster-1
+                   compute-cluster-2
+                   compute-cluster-3]
+                  sched/job->acceptable-compute-clusters)))))
       (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
         (is (= {}
                (sched/distribute-jobs-to-compute-clusters
-                 [(assoc job :job/uuid (UUID/randomUUID))]
-                 "test-pool"
-                 [compute-cluster-2]
-                 sched/job->acceptable-compute-clusters)))))))
+                [(assoc job :job/uuid (UUID/randomUUID))]
+                "test-pool"
+                [compute-cluster-2]
+                sched/job->acceptable-compute-clusters))))))
+  (deftest test-kubernetes-pool->zip-job-metadata
+    (testutil/setup)
+    (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
+        {compute-cluster-1-name compute-cluster-1
+         compute-cluster-2-name compute-cluster-2
+         compute-cluster-3-name compute-cluster-3})
+    (let [base-job {:job/checkpoint true}]
+      (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
+            job2 (assoc base-job :job/uuid (UUID/randomUUID))
+            job3 (assoc base-job :job/uuid (UUID/randomUUID))
+            jobs [job1 job2 job3]
+            compute-cluster->jobs (sched/distribute-jobs-to-compute-clusters
+                                   jobs
+                                   "test-pool"
+                                   [compute-cluster-1
+                                    compute-cluster-2
+                                    compute-cluster-3]
+                                   sched/job->acceptable-compute-clusters)
+            jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)
+            mesos-run-as-user "user"]
+        
+        (println "@ALEX@")
+        
+        (println (sched/kubernetes-pool->zip-job-metadata
+                  compute-cluster->jobs
+                  jobs->task-id
+                  mesos-run-as-user))
+
+
+
+
+        ;; (is (= (list [job1])
+        ;;        (vals (sched/distribute-jobs-to-compute-clusters
+        ;;               [job1]
+        ;;               "test-pool"
+        ;;               [compute-cluster-1
+        ;;                compute-cluster-2
+        ;;                compute-cluster-3]
+        ;;               sched/job->acceptable-compute-clusters))))
+        ))
+    
+    ))

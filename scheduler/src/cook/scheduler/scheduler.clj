@@ -2115,7 +2115,7 @@
                 max-considerable)
               next-considerable))))
 
-(defn- kubernetes-pool->task-txns
+(defn kubernetes-pool->task-txns
   "Converts jobs and metadata to task transactions."
   [compute-cluster->zip-job-metadata]
   (for [[compute-cluster zip-job-metadata] compute-cluster->zip-job-metadata
@@ -2149,7 +2149,7 @@
               (- (.getTime instance-start-time)
                  (.getTime ^Date last-waiting-start-time))))]))
 
-(defn- kubernetes-pool->zip-job-metadata
+(defn kubernetes-pool->zip-job-metadata
   "For each compute cluster, zip its considerble jobs and newly generated task-metadata-seq."
   [compute-cluster->jobs jobs->task-id mesos-run-as-user]
   (zipmap (keys compute-cluster->jobs)
