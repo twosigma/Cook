@@ -4,8 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.1] - 2022-07-27
+### Added
+- Add support for pool quotas across pools, from @scrosby
+
 ## [1.62.0] - 2022-07-20
-### Fixed
+### Added
 - Add support for routing jobs between pools based on constraints, from @scrosby
 
 ## [1.61.3] - 2022-07-14

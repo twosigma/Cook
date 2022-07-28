@@ -132,6 +132,7 @@
                          #'cook.plugins.launch/plugin-object
                          #'cook.plugins.pool/plugin
                          #'cook.plugins.submission/plugin-object
+                         #'cook.prometheus-metrics/registry
                          #'caches/job-ent->resources-cache
                          #'caches/job-ent->pool-cache
                          #'caches/task-ent->user-cache

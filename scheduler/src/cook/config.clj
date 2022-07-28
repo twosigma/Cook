@@ -755,6 +755,11 @@
   []
   (-> config :settings :constraint-attribute->transformation))
 
+(defn quota-grouping-config
+  "Configuration flags for grouping quota."
+  []
+  (-> config :settings :quota-grouping))
+
 (defn kubernetes-scheduler
   "Returns configuration for using Kubernetes Scheduler"
   []

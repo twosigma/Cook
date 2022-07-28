@@ -32,7 +32,11 @@
             [cook.plugins.pool] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
-            [cook.queue-limit :as queue-limit] ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.prometheus-metrics namespace.
+            [cook.prometheus-metrics]
+            [cook.queue-limit :as queue-limit]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.quota namespace.
+            [cook.quota :as quota]
             [cook.rate-limit]
             [cook.rest.cors :as cors]
             [cook.util :as util]
@@ -198,7 +202,7 @@
   "Skip authentication on some hard-coded endpoints."
   [h auth-middleware]
   (let [auth-fn (auth-middleware h)
-        no-auth-pattern #"/(?:info|progress/[-\w]+)"]
+        no-auth-pattern #"/(?:info|metrics|progress/[-\w]+)"]
     (fn filtered-auth [{:keys [uri request-method] :as req}]
       (if (re-matches no-auth-pattern uri)
         (h req)

@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.62.1-SNAPSHOT"
+(defproject cook "1.62.2-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.10.3"]
@@ -107,6 +107,7 @@
                  [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
                                                             org.clojure/clojure io.netty/netty]]
                  [opentracing-clj "0.2.2"]
+                 [clj-commons/iapetos "0.1.12"]
 
                  ;;External system integrations
                  [org.clojure/tools.nrepl "0.2.3"]

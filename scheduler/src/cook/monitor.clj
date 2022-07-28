@@ -19,7 +19,7 @@
             [clojure.set :refer [difference union]]
             [clojure.tools.logging :as log]
             [cook.cached-queries :as cached-queries]
-            [cook.config :refer [config]]
+            [cook.config :as config :refer [config]]
             [cook.datomic :as datomic]
             [cook.pool :as pool]
             [cook.queries :as queries]
@@ -31,16 +31,10 @@
             [metrics.counters :as counters]
             [plumbing.core :refer [map-keys]]))
 
-
-(defn quota-grouping-config
-  "Configuration flags for grouping quota."
-  []
-  (-> config :settings :quota-grouping))
-
 (defn job-ent-in-pool
   [pool-name job-ent]
   (let [cached-pool (cached-queries/job->pool-name job-ent)]
-    (or (= pool-name cached-pool) (= pool-name (get (quota-grouping-config) cached-pool)))))
+    (or (= pool-name cached-pool) (= pool-name (get (config/quota-grouping-config) cached-pool)))))
 
 (defn- get-job-stats
   "Given all jobs for a particular job state, e.g. running or
@@ -212,9 +206,7 @@
                           pending-job-ents (queries/get-pending-job-ents mesos-db)
                           running-job-ents (tools/get-running-job-ents mesos-db)
                           ; Merge explicit pools as well as quota-grouping pools.
-                          all-pools (-> #{}
-                                        (into (map :pool/name (pool/all-pools mesos-db)))
-                                        (into (vals (quota-grouping-config))))
+                          all-pools (tools/all-and-quota-group-pools mesos-db)
                           pools (if (seq all-pools) all-pools "no-pool")]
                       (run!
                         (fn [name]
