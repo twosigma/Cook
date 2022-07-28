@@ -22,6 +22,7 @@
             [cook.config :as config :refer [config]]
             [cook.datomic :as datomic]
             [cook.pool :as pool]
+            [cook.prometheus-metrics :as prometheus]
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.scheduler.share :as share]
@@ -145,18 +146,30 @@
   (run!
     (fn [[user stats]]
       (run! (fn [[type amount]]
-              (-> [state user (name type) (str "pool-" pool-name)]
+              (do
+                (-> [state user (name type) (str "pool-" pool-name)]
                   counters/counter
-                  (set-counter! amount)))
+                  (set-counter! amount))
+                ; Metrics need to be pre-registered in prometheus, so only record them if the metric exists
+                ; Log a warning otherwise so that we know to add a metric if we add a new resource type.
+                (if (and (contains? prometheus/resource-metric-map state) (contains? (prometheus/resource-metric-map state) type))
+                  (prometheus/set ((prometheus/resource-metric-map state) type) {:pool pool-name :user user} amount)
+                  (log/warn "Encountered unknown keys for prometheus user metrics; state" state "type" type))))
             stats))
     (add-aggregated-stats stats)))
+
 
 (defn set-total-counter!
   "Given a state (e.g. starved) and a value, sets the corresponding counter."
   [state value pool-name]
-  (-> [state "users" (str "pool-" pool-name)]
-      counters/counter
-      (set-counter! value)))
+  (do (-> [state "users" (str "pool-" pool-name)]
+        counters/counter
+        (set-counter! value))
+      ; Metrics need to be pre-registered in prometheus, so only record them if the metric exists
+      ; Log a warning otherwise so that we know to add a metric if we add a new resource type.
+      (if (contains? prometheus/user-state-count-metric-map state)
+        (prometheus/set (prometheus/user-state-count-metric-map state) {:pool pool-name} value)
+        (log/warn "Ecnountered unknown state" state "for prometheus user metrics count"))))
 
 (defn set-stats-counters!
   "Queries the database for running and waiting jobs per user, and sets
