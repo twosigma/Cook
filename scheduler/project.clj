@@ -107,6 +107,7 @@
                  [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
                                                             org.clojure/clojure io.netty/netty]]
                  [opentracing-clj "0.2.2"]
+                 [clj-commons/iapetos "0.1.12"]
 
                  ;;External system integrations
                  [org.clojure/tools.nrepl "0.2.3"]

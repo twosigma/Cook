@@ -44,6 +44,7 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.prometheus-metrics :as cook-prometheus]
             [cook.regexp-tools :as regexp-tools]
             [cook.queries :as queries]
             [cook.queue-limit :as queue-limit]
@@ -1897,6 +1898,14 @@
                           (let [instance (-> ctx ::instances first)
                                 job (-> ctx ::jobs first)]
                             {:instance instance :job job :message "progress update accepted"}))})))
+
+(defn metrics-handler
+  []
+  (base-cook-handler
+    {:allowed-methods [:get]
+     :available-media-types ["text/plain"]
+     :handle-ok (fn [_]
+                  (cook-prometheus/export))}))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -3951,7 +3960,17 @@
                                                        leader-selector)
               :responses {200 {:description "The incremental configuration was returned."}
                           307 {:description "Redirecting request to leader node."}}}}))
-
+        (c-api/context
+          ;; endpoint for prometheus metrics
+          "/metrics" []
+          (c-api/resource
+            ;; NOTE: The authentication for this endpoint is disabled via cook.components/conditional-auth-bypass
+            {:produces ["text/plain"]
+             :get
+             {:summary "Get metrics"
+              :response {200 {:description "OK"}
+                         500 {:description "Internal server error"}}
+              :handler (metrics-handler)}}))
         (c-api/undocumented
           ;; internal api endpoints (don't include in swagger)
           (c-api/context

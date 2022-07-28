@@ -825,6 +825,7 @@
                       (db conn) instance-id-3))))))
 
 (deftest test-filter-offensive-jobs
+  (cook.test.testutil/setup)
   (let [uri "datomic:mem://test-filter-offensive-jobs"
         conn (restore-fresh-database! uri)
         constraints {:memory-gb 10.0
