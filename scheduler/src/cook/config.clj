@@ -544,7 +544,7 @@
                                     telemetry-tags-key-invalid-char-pattern
                                     (assoc :telemetry-tags-key-invalid-char-pattern
                                            (re-pattern telemetry-tags-key-invalid-char-pattern))))))
-     :kubernetes-scheduler (fnk [[:config {scheduler nil}]]
+     :kubernetes-scheduler (fnk [[:config {scheduler {}}]]
                                 (guard-invalid-kubernetes-scheduler-config (:kubernetes-scheduler scheduler))
                                 (merge
                                  {:pool-regex "$^"

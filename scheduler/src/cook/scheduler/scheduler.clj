@@ -2150,7 +2150,7 @@
                  (.getTime ^Date last-waiting-start-time))))]))
 
 (defn- kubernetes-pool->zip-job-metadata
-  "For each compute cluster, zip its considerble jobs and generated task-metadata-seq."
+  "For each compute cluster, zip its considerble jobs and newly generated task-metadata-seq."
   [compute-cluster->jobs jobs->task-id mesos-run-as-user]
   (zipmap (keys compute-cluster->jobs)
           (for [[compute-cluster jobs-for-cluster] compute-cluster->jobs

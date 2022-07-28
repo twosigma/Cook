@@ -91,7 +91,7 @@
                            offer-incubate-time-ms optimizer rebalancer server-port task-constraints]
                           compute-clusters curator-framework mesos-datomic-mult leadership-atom
                           pool-name->pending-jobs-atom mesos-heartbeat-chan
-                          trigger-chans kubernetes-scheduler-config]
+                          trigger-chans kubernetes-scheduler]
 
                       ; We track queue limits on all nodes, not just the leader, because
                       ; we need to check them when job submission requests come in
@@ -125,7 +125,7 @@
                                :trigger-chans trigger-chans
                                :zk-prefix mesos-leader-path
                                :api-only? (cook.config/api-only-mode?)
-                               :kubernetes-scheduler-config kubernetes-scheduler-config})
+                               :kubernetes-scheduler-config kubernetes-scheduler})
                             (catch ClassNotFoundException e
                               (log/warn e "Not loading mesos support...")
                               nil)))
