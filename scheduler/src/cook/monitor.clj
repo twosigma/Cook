@@ -122,6 +122,15 @@
   (let [amount-to-inc (- (long (min value Long/MAX_VALUE)) (counters/value counter))]
     (counters/inc! counter amount-to-inc)))
 
+(defn set-prometheus-gauge!
+  "Sets the value of the counter to the new value."
+  [pool-name user state type amount]
+  ; Metrics need to be pre-registered in prometheus, so only record them if the metric exists
+  ; Log a warning otherwise so that we know to add a metric if we add a new resource type.
+  (if (contains? prometheus/resource-metric-map type)
+    (prometheus/set (prometheus/resource-metric-map type) {:pool pool-name :user user :state state} amount)
+    (log/warn "Encountered unknown type for prometheus user metrics:" type)))
+
 (defn- clear-old-counters!
   "Clears counters that were present on the previous iteration
   but not in the current iteration. This avoids the situation
@@ -134,7 +143,9 @@
         users-to-clear (difference previous-users current-users)]
     (run! (fn [user]
             (run! (fn [[type _]]
-                    (set-counter! (counters/counter [state user (name type) (str "pool-" pool-name)]) 0))
+                    (do
+                      (set-counter! (counters/counter [state user (name type) (str "pool-" pool-name)]) 0)
+                      (set-prometheus-gauge! pool-name user state type 0)))
                   (get previous-stats user)))
           users-to-clear)))
 
@@ -150,11 +161,7 @@
                 (-> [state user (name type) (str "pool-" pool-name)]
                   counters/counter
                   (set-counter! amount))
-                ; Metrics need to be pre-registered in prometheus, so only record them if the metric exists
-                ; Log a warning otherwise so that we know to add a metric if we add a new resource type.
-                (if (contains? prometheus/resource-metric-map type)
-                  (prometheus/set (prometheus/resource-metric-map type) {:pool pool-name :user user :state state} amount)
-                  (log/warn "Encountered unknown type for prometheus user metrics:" type))))
+                (set-prometheus-gauge! pool-name user state type amount)))
             stats))
     (add-aggregated-stats stats)))
 
