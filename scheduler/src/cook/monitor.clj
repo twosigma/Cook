@@ -152,9 +152,9 @@
                   (set-counter! amount))
                 ; Metrics need to be pre-registered in prometheus, so only record them if the metric exists
                 ; Log a warning otherwise so that we know to add a metric if we add a new resource type.
-                (if (and (contains? prometheus/resource-metric-map state) (contains? (prometheus/resource-metric-map state) type))
-                  (prometheus/set ((prometheus/resource-metric-map state) type) {:pool pool-name :user user} amount)
-                  (log/warn "Encountered unknown keys for prometheus user metrics; state" state "type" type))))
+                (if (contains? prometheus/resource-metric-map type)
+                  (prometheus/set (prometheus/resource-metric-map type) {:pool pool-name :user user :state state} amount)
+                  (log/warn "Encountered unknown type for prometheus user metrics:" type))))
             stats))
     (add-aggregated-stats stats)))
 
@@ -165,11 +165,7 @@
   (do (-> [state "users" (str "pool-" pool-name)]
         counters/counter
         (set-counter! value))
-      ; Metrics need to be pre-registered in prometheus, so only record them if the metric exists
-      ; Log a warning otherwise so that we know to add a metric if we add a new resource type.
-      (if (contains? prometheus/user-state-count-metric-map state)
-        (prometheus/set (prometheus/user-state-count-metric-map state) {:pool pool-name} value)
-        (log/warn "Ecnountered unknown state" state "for prometheus user metrics count"))))
+        (prometheus/set (prometheus/user-state-count state) {:pool pool-name :state state} value)))
 
 (defn set-stats-counters!
   "Queries the database for running and waiting jobs per user, and sets
