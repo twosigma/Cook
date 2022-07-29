@@ -131,27 +131,27 @@
       ;; Resource usage stats -----------------------------------------------------------------------------------
       ;; We set these up using a map so we can access them easily by resource type when we set the metric.
       (prometheus/gauge (resource-metric-map :mem)
-                        {:description "Current memory by state"}
-                        :labels [:pool :user :state])
+                        {:description "Current memory by state"
+                        :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :cpus)
-                        {:description "Current cpu count by state"}
-                        :labels [:pool :user :state])
+                        {:description "Current cpu count by state"
+                        :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :gpus)
-                        {:description "Current gpu count by state"}
-                        :labels [:pool :user :state])
+                        {:description "Current gpu count by state"
+                        :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :jobs)
-                        {:description "Current jobs count by state"}
-                        :labels [:pool :user :state])
+                        {:description "Current jobs count by state"
+                        :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :launch-rate-saved)
-                        {:description "Current launch-rate-saved count by state"}
-                        :labels [:pool :user :state])
+                        {:description "Current launch-rate-saved count by state"
+                        :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :launch-rate-per-minute)
-                        {:description "Current launch-rate-per-minute count by state"}
-                        :labels [:pool :user :state])
+                        {:description "Current launch-rate-per-minute count by state"
+                        :labels [:pool :user :state]})
       ;; Metrics for user resource allocation counts
       (prometheus/gauge user-state-count
-                        {:description "Current user count by state"}
-                        :labels [:pool :state]))))
+                        {:description "Current user count by state"
+                         :labels [:pool :state]}))))
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
@@ -168,9 +168,9 @@
   "Sets the value of the given metric."
   {:arglists '([name amount] [name labels amount])}
   ([name amount]
-   `(prometheus/set (registry ~name) ~amount))
+   `(prometheus/set registry ~name ~amount))
   ([name labels amount]
-   `(prometheus/set (registry ~name ~labels) ~amount)))
+   `(prometheus/set registry ~name ~labels ~amount)))
 
 (defn export []
   "Returns the current values of all registered metrics in plain text format."
