@@ -165,7 +165,7 @@
   (do (-> [state "users" (str "pool-" pool-name)]
         counters/counter
         (set-counter! value))
-        (prometheus/set (prometheus/user-state-count state) {:pool pool-name :state state} value)))
+        (prometheus/set prometheus/user-state-count {:pool pool-name :state state} value)))
 
 (defn set-stats-counters!
   "Queries the database for running and waiting jobs per user, and sets
