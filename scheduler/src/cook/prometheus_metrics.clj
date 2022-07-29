@@ -168,9 +168,9 @@
   "Sets the value of the given metric."
   {:arglists '([name amount] [name labels amount])}
   ([name amount]
-   `(prometheus/set registry ~name ~amount))
+   `(prometheus/set (registry ~name) ~amount))
   ([name labels amount]
-   `(prometheus/set registry ~name ~labels ~amount)))
+   `(prometheus/set (registry ~name ~labels) ~amount)))
 
 (defn export []
   "Returns the current values of all registered metrics in plain text format."
