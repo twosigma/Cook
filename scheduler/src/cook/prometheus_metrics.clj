@@ -44,6 +44,17 @@
 (def scheduler-filter-offensive-jobs-duration :cook/scheduler-filter-offensive-jobs-duration-seconds)
 (def scheduler-handle-status-update-duaration :cook/scheduler-handle-status-update-duaration-seconds)
 (def scheduler-handle-framework-message-duration :cook/scheduler-handle-framework-message-duration-seconds)
+(def user-state-count :cook/scheduler-users-state-count)
+;; For user resource metrics, we access them by resource type at runtime, so it is
+;; easier to define them all in a map instead of separate vars.
+(def resource-metric-map
+  {:cpus :cook/scheduler-users-cpu-count
+   :mem :cook/scheduler-users-memory-mebibytes
+   :jobs :cook/scheduler-users-jobs-count
+   :gpus :cook/scheduler-users-gpu-count
+   :launch-rate-saved :cook/scheduler-users-launch-rate-saved
+   :launch-rate-per-minute :cook/scheduler-users-launch-rate-per-minute})
+
 
 (defn create-registry
   []
@@ -116,7 +127,31 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary scheduler-handle-framework-message-duration
                           {:description "Distribution of handle framework message latency"
-                           :quantiles default-summary-quantiles}))))
+                           :quantiles default-summary-quantiles})
+      ;; Resource usage stats -----------------------------------------------------------------------------------
+      ;; We set these up using a map so we can access them easily by resource type when we set the metric.
+      (prometheus/gauge (resource-metric-map :mem)
+                        {:description "Current memory by state"
+                        :labels [:pool :user :state]})
+      (prometheus/gauge (resource-metric-map :cpus)
+                        {:description "Current cpu count by state"
+                        :labels [:pool :user :state]})
+      (prometheus/gauge (resource-metric-map :gpus)
+                        {:description "Current gpu count by state"
+                        :labels [:pool :user :state]})
+      (prometheus/gauge (resource-metric-map :jobs)
+                        {:description "Current jobs count by state"
+                        :labels [:pool :user :state]})
+      (prometheus/gauge (resource-metric-map :launch-rate-saved)
+                        {:description "Current launch-rate-saved count by state"
+                        :labels [:pool :user :state]})
+      (prometheus/gauge (resource-metric-map :launch-rate-per-minute)
+                        {:description "Current launch-rate-per-minute count by state"
+                        :labels [:pool :user :state]})
+      ;; Metrics for user resource allocation counts
+      (prometheus/gauge user-state-count
+                        {:description "Current user count by state"
+                         :labels [:pool :state]}))))
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
@@ -128,6 +163,14 @@
   {:arglists '([name labels & body])}
   [name labels & body]
   `(prometheus/with-duration (registry ~name ~labels) ~@body))
+
+(defmacro set
+  "Sets the value of the given metric."
+  {:arglists '([name amount] [name labels amount])}
+  ([name amount]
+   `(prometheus/set registry ~name ~amount))
+  ([name labels amount]
+   `(prometheus/set registry ~name ~labels ~amount)))
 
 (defn export []
   "Returns the current values of all registered metrics in plain text format."
