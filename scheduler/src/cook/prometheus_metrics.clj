@@ -44,6 +44,11 @@
 (def scheduler-filter-offensive-jobs-duration :cook/scheduler-filter-offensive-jobs-duration-seconds)
 (def scheduler-handle-status-update-duaration :cook/scheduler-handle-status-update-duaration-seconds)
 (def scheduler-handle-framework-message-duration :cook/scheduler-handle-framework-message-duration-seconds)
+(def scheduler-match-cycle-jobs-count :cook/scheduler-match-cycle-jobs-count)
+(def scheduler-match-cycle-matched-percent :cook/scheduler-match-cycle-matched-percent)
+(def scheduler-match-cycle-head-was-matched :cook/scheduler-match-cycle-head-was-matched)
+(def scheduler-match-cycle-queue-was-full :cook/scheduler-match-cycle-queue-was-full)
+(def scheduler-match-cycle-all-matched :cook/scheduler-match-cycle-all-matched)
 (def user-state-count :cook/scheduler-users-state-count)
 ;; For user resource metrics, we access them by resource type at runtime, so it is
 ;; easier to define them all in a map instead of separate vars.
@@ -128,6 +133,23 @@
       (prometheus/summary scheduler-handle-framework-message-duration
                           {:description "Distribution of handle framework message latency"
                            :quantiles default-summary-quantiles})
+      ;; Match cycle metrics ------------------------------------------------------------------------------------
+      (prometheus/gauge scheduler-match-cycle-jobs-count
+                        {:description "Aggregate match cycle job counts stats"
+                         :labels [:pool :status]})
+      (prometheus/gauge scheduler-match-cycle-matched-percent
+                        {:description "Percent of jobs matched in last match cycle"
+                         :labels [:pool]})
+      ; The follow 1/0 metrics are useful for value map visualizations in Grafana
+      (prometheus/gauge scheduler-match-cycle-head-was-matched
+                        {:description "1 if head was matched, 0 otherwise"
+                         :labels [:pool]})
+      (prometheus/gauge scheduler-match-cycle-queue-was-full
+                        {:description "1 if queue was full, 0 otherwise"
+                         :labels [:pool]})
+      (prometheus/gauge scheduler-match-cycle-all-matched
+                        {:description "1 if all jobs were matched, 0 otherwise"
+                         :labels [:pool]})
       ;; Resource usage stats -----------------------------------------------------------------------------------
       ;; We set these up using a map so we can access them easily by resource type when we set the metric.
       (prometheus/gauge (resource-metric-map :mem)
