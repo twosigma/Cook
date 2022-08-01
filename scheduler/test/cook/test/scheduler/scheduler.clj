@@ -2611,9 +2611,10 @@
           (println "@ALEX@")
 
           (pprint/pprint (sched/kubernetes-pool->zip-job-metadata
-                    compute-cluster->jobs
-                    jobs->task-id
-                    mesos-run-as-user))
+                          compute-cluster->jobs
+                          jobs->task-id
+                          mesos-run-as-user
+                          "test-pool"))
 
 
 

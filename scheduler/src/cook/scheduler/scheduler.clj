@@ -2237,12 +2237,26 @@
 
 (defn kubernetes-pool->zip-job-metadata
   "For each compute cluster, zip its considerble jobs and newly generated task-metadata-seq."
-  [compute-cluster->jobs jobs->task-id mesos-run-as-user]
+  [compute-cluster->jobs jobs->task-id mesos-run-as-user pool-name]
   (zipmap (keys compute-cluster->jobs)
           (for [[compute-cluster jobs-for-cluster] compute-cluster->jobs
                 :let [task-metadata-seq (map
-                                         (fn [job]
-                                           (task/job->task-metadata compute-cluster mesos-run-as-user job (jobs->task-id job))) jobs-for-cluster)]]
+                                         (fn [{:keys [job/name job/user job/uuid job/environment] :as job}]
+                                           (let [pool-specific-resources
+                                                 ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+                                             ;; TODO(alexh): is this everything needed to launch a real task?
+                                             (merge
+                                              (task/job->task-metadata compute-cluster mesos-run-as-user
+                                                                       job (jobs->task-id job))
+                                              {:task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                                                              :job {:job/pool {:pool/name pool-name}
+                                                                    :job/environment environment
+                                                                    :job/name name
+                                                                    :job/user user
+                                                                    :job/uuid uuid}
+                                                              ; Need to pass in resources to task-metadata->pod for gpu count
+                                                              :resources pool-specific-resources}}))) 
+                                         jobs-for-cluster)]]
             {:jobs jobs-for-cluster
              :task-metadata-seq task-metadata-seq})))
 
@@ -2287,7 +2301,7 @@
 
                 ;; Combine jobs for each cluster with a fake task-metadata-seq
                 ;; This will be used to generate all db txns and then to launch the tasks.
-                compute-cluster->zip-job-metadata (kubernetes-pool->zip-job-metadata compute-cluster->jobs jobs->task-id mesos-run-as-user)
+                compute-cluster->zip-job-metadata (kubernetes-pool->zip-job-metadata compute-cluster->jobs jobs->task-id mesos-run-as-user pool-name)
 
                 ;; Get sequence of db txns which update all jobs across compute-clusters. 
                 task-txns (kubernetes-pool->task-txns compute-cluster->zip-job-metadata)]
@@ -2295,7 +2309,7 @@
             (->> compute-cluster->zip-job-metadata
                  (map
                   (fn [[compute-cluster zip-job-metadata]]
-                    (log-structured/debug "Aquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
+                    (log-structured/info "Aquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
                                          {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq zip-job-metadata})
                     (let [kill-lock-object (cc/kill-lock-object compute-cluster)]
                       (try
@@ -2317,7 +2331,7 @@
                          (future (cc/launch-tasks compute-cluster
                                                   pool-name
                                                   [{:task-metadata-seq (:task-metadata-seq zip-job-metadata)}]
-                                                    ;; TODO(alexh): any post processing such as updating launch rate limiting?
+                                                  ;; TODO(alexh): any post processing such as updating launch rate limiting?
                                                   (fn [_]))))
                         (finally
                           (.. kill-lock-object readLock unlock))))))
