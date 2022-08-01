@@ -186,17 +186,6 @@
       (when-not (contains? valid-types default-type)
         (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not listed as a valid disk type") entry))))))
 
-(defn guard-invalid-kubernetes-scheduler-config
-  "Throws if the configuration for using the Kubernetes Scheduler is not properly formatted."
-  [kubernetes-scheduler]
-  (when kubernetes-scheduler
-    (doseq [{:keys [pool-regex max-jobs-considered] :as entry} kubernetes-scheduler]
-      (when-not pool-regex
-        (throw (ex-info (str "pool-regex key is missing from config") entry)))
-      ;; TODO(alexh): TBD if we want a separate batch size per pool
-      (when-not max-jobs-considered
-        (throw (ex-info (str "Max jobs considered is not defined") entry))))))
-
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -545,7 +534,6 @@
                                     (assoc :telemetry-tags-key-invalid-char-pattern
                                            (re-pattern telemetry-tags-key-invalid-char-pattern))))))
      :kubernetes-scheduler (fnk [[:config {kubernetes-scheduler {}}]]
-                                (guard-invalid-kubernetes-scheduler-config kubernetes-scheduler)
                                 (merge
                                  {:pool-regex "$^"
                                   :max-considerable 1000}
