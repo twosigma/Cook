@@ -2233,7 +2233,24 @@
     (is (= 1 (count foo-jobs)))
     (is (= 1 (count bar-jobs)))
     (is (= (str (:job/uuid (d/entity (d/db conn) job-1))) (-> foo-jobs first (get "uuid"))))
-    (is (= (str (:job/uuid (d/entity (d/db conn) job-2))) (-> bar-jobs first (get "uuid"))))))
+    (is (= (str (:job/uuid (d/entity (d/db conn) job-2))) (-> bar-jobs first (get "uuid"))))
+
+    (testing "list jobs with job routing plugin"
+      (let [_ (create-pool conn "foo-1")
+            _ (create-pool conn "foo-2")
+            job-r1 (create-dummy-job conn
+                                    :user "alice"
+                                    :job-state :job.state/running
+                                    :pool "foo-1"
+                                    :submit-pool-name "foo")
+            job-r2 (create-dummy-job conn
+                                    :user "alice"
+                                    :job-state :job.state/running
+                                    :pool "foo-2"
+                                    :submit-pool-name "foo")]
+        (is (= 1 (count (list-jobs-fn "foo-1"))))
+        (is (= 1 (count (list-jobs-fn "foo-2"))))
+        (is (= 3 (count (list-jobs-fn "foo"))))))))
 
 (deftest test-name-filter-str->name-filter-pattern
   (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))
@@ -2582,14 +2599,21 @@
                 job-uuid (-> request :body-params :jobs first :uuid)
                 {:keys [status] :as response} (handler request)]
             (is (= 201 status) (str response))
-            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))
+            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))
+            (let [job (-> conn d/db (d/entity [:job/uuid job-uuid]))]
+              (do
+                (cook.pool/check-pool-and-submit-pool job :job/pool "large-job-pool" false))))
           (let [request (-> (new-request)
                             (assoc-in [:body-params :pool] "@by-size")
                             (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 1.1)]))
                 job-uuid (-> request :body-params :jobs first :uuid)
                 {:keys [status] :as response} (handler request)]
             (is (= 201 status) (str response))
-            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))))))
+            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))
+            (let [job (-> conn d/db (d/entity [:job/uuid job-uuid]))]
+              (do
+                (cook.pool/check-pool-and-submit-pool job :job/pool "large-job-pool" false)))
+            ))))))
 
 (deftest test-match-default-containers
   (let [default-containers

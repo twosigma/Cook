@@ -16,6 +16,17 @@
 
 (def nil-pool "nil-pool")
 
+(defn check-pool-and-submit-pool
+  "Returns true if requesting-default-pool? and the entity does not have a pool
+   or the entity has either a pool or a submit-pool named pool-name"
+  ([ent entity->pool pool-name requesting-default-pool?]
+   (let [pool (entity->pool ent)
+         submit-pool (:job/submit-pool-name ent)]
+     (or (and (nil? pool)
+              requesting-default-pool?)
+         (= pool-name (:pool/name pool))
+         (= pool-name submit-pool)))))
+
 (defn check-pool-for-listing
   "Returns true if either the provided pool-name is the 'nil' pool, or if
   pool/check-pool returns true. This allows us to return jobs in all pools when the user
@@ -23,7 +34,7 @@
   ([entity entity->pool pool-name default-pool?]
    (or
      (= nil-pool pool-name)
-     (cook.pool/check-pool entity entity->pool pool-name default-pool?)))
+     (cook.pool/check-pool-and-submit-pool entity entity->pool pool-name default-pool?)))
   ([source eid entity->pool pool-name default-pool?]
    (check-pool-for-listing (d/entity source eid) entity->pool pool-name default-pool?)))
 
