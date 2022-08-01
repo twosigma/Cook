@@ -2260,8 +2260,7 @@
           ;; submit beyond what users have quota to actually run.
           considerable-jobs (tracing/with-span [s {:name "scheduler.handle-kubernetes-pool.generate-considerable-jobs"
                                                    :tags {:pool pool-name :component tracing-component-tag}}]
-                              (->> pool-name
-                                   pending-jobs
+                              (->> pending-jobs
                                    (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
                                                                         user->quota user->usage 
                                                                         (tools/global-pool-quota pool-name))
