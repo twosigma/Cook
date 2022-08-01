@@ -1110,11 +1110,22 @@
         user->number-unmatched-considerable-jobs (merge-with
                                                    -
                                                    user->number-total-considerable-jobs
-                                                   user->number-matched-considerable-jobs)]
+                                                   user->number-matched-considerable-jobs)
+        match-percent (if (= number-considerable-jobs 0) 0 (/ number-matched-jobs number-considerable-jobs))
+        queue-was-full? (= max-considerable number-considerable-jobs)]
     (if (= number-considerable-jobs 0)
       ; keep the log slim in the 0 considerables case
-      (log-structured/info "total match cycle metric"
-                           {:inputs {:jobs-considerable 0} :pool pool-name} nil match-cycle-logger-ns)
+      (do (log-structured/info "total match cycle metric"
+                               {:inputs {:jobs-considerable 0} :pool pool-name} nil match-cycle-logger-ns)
+          ; Also reset any prometheus metrics for accuracy
+          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "matched"} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-matched-percent {:pool pool-name} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-all-matched {:pool pool-name} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-head-was-matched {:pool pool-name} 0)
+          (prometheus/set prometheus/scheduler-match-cycle-queue-was-full {:pool pool-name} 0))
       ; nonzero considerables case
       (do
         ; compute the considerable, matched, and unmatched jobs for each user and emit individual metrics
@@ -1130,10 +1141,10 @@
                              {:inputs {:jobs-considerable number-considerable-jobs
                                        :offers (count offers)
                                        :max-considerable max-considerable
-                                       :queue-was-full (= max-considerable number-considerable-jobs)}
+                                       :queue-was-full queue-was-full?}
                               :matched {:jobs-considerable number-matched-jobs
                                         :offers (count offers-scheduled)
-                                        :match-percent (/ number-matched-jobs number-considerable-jobs)
+                                        :match-percent match-percent
                                         :head-was-matched head-matched?}
                               :pool pool-name
                               :unmatched {:jobs-considerable number-unmatched-jobs
@@ -1141,7 +1152,15 @@
                               :stats {:jobs-considerable (jobs->stats considerable-jobs)
                                       :offers (offers->stats offers)
                                       :head-resources head-resources}}
-                             nil match-cycle-logger-ns)))
+                             nil match-cycle-logger-ns)
+        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "matched"} number-matched-jobs)
+        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} number-considerable-jobs)
+        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} number-unmatched-jobs)
+        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} max-considerable)
+        (prometheus/set prometheus/scheduler-match-cycle-matched-percent {:pool pool-name} match-percent)
+        (prometheus/set prometheus/scheduler-match-cycle-all-matched {:pool pool-name} (if (= match-percent 1.0) 1 0))
+        (prometheus/set prometheus/scheduler-match-cycle-head-was-matched {:pool pool-name} (if head-matched? 1 0))
+        (prometheus/set prometheus/scheduler-match-cycle-queue-was-full {:pool pool-name} (if queue-was-full? 1 0))))
 
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
@@ -1341,14 +1360,15 @@
                                                       (max number-unmatched-jobs)) ; Autoscale at least the pods that failed to match.
                   ;; We need to filter pending jobs based on quota so that we don't
                   ;; trigger autoscaling beyond what users have quota to actually run
-                  autoscalable-jobs (tracing/with-span [s {:name "scheduler.handle-resource-offers.generate-autoscalable-jobs"
-                                                           :tags {:pool pool-name :component tracing-component-tag}}]
-                                                       (->> pool-name
-                                                            (get @pool-name->pending-jobs-atom)
-                                                            (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                                                                                 user->quota user->usage (tools/global-pool-quota pool-name))
-                                                            (take max-jobs-for-autoscaling-scaled)
-                                                            (doall)))
+                  autoscalable-jobs (tracing/with-span
+                                      [s {:name "scheduler.handle-resource-offers.generate-autoscalable-jobs"
+                                          :tags {:pool pool-name :component tracing-component-tag}}]
+                                      (->> pool-name
+                                           (get @pool-name->pending-jobs-atom)
+                                           (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
+                                                                                user->quota user->usage (tools/global-pool-quota pool-name))
+                                           (take max-jobs-for-autoscaling-scaled)
+                                           (doall)))
                   filtered-autoscalable-jobs (remove #(.getIfPresent caches/recent-synthetic-pod-job-uuids (:job/uuid %)) autoscalable-jobs)]
               ; When we have at least a minimum number of jobs being looked at, metric which fraction have matched.
               ; This lets us measure how well we're matching on existing resources.
