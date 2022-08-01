@@ -189,7 +189,7 @@
 (defn guard-invalid-kubernetes-scheduler-config
   "Throws if the configuration for using the Kubernetes Scheduler is not properly formatted."
   [kubernetes-scheduler]
-  (when :kubernetes-scheduler
+  (when kubernetes-scheduler
     (doseq [{:keys [pool-regex max-jobs-considered] :as entry} kubernetes-scheduler]
       (when-not pool-regex
         (throw (ex-info (str "pool-regex key is missing from config") entry)))
@@ -545,11 +545,11 @@
                                     (assoc :telemetry-tags-key-invalid-char-pattern
                                            (re-pattern telemetry-tags-key-invalid-char-pattern))))))
      :kubernetes-scheduler (fnk [[:config {kubernetes-scheduler {}}]]
-                                (guard-invalid-kubernetes-scheduler-config (:kubernetes-scheduler kubernetes-scheduler))
+                                (guard-invalid-kubernetes-scheduler-config kubernetes-scheduler)
                                 (merge
                                  {:pool-regex "$^"
                                   :max-considerable 1000}
-                                 (:kubernetes-scheduler kubernetes-scheduler)))
+                                 kubernetes-scheduler))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
                                :global-min-match-interval-millis 100

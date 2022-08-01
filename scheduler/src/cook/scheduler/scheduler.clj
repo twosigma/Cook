@@ -2335,7 +2335,7 @@
   (let [pools-pattern (-> kubernetes-scheduler-config
                           :pool-regex
                           re-pattern)]
-    (re-find pools-pattern pool-name)))
+    (not (nil? (re-find pools-pattern pool-name)))))
 
 (defn max-considerable-for-kubernetes-scheduler-pool
   "Get max considerable value for a Kubernetes Scheduler pool."
