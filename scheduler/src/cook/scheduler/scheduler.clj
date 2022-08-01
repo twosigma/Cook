@@ -2122,7 +2122,8 @@
   [conn fenzo fenzo-state resources-atom pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
    scaleback floor-iterations-before-warn floor-iterations-before-reset rebalancer-reservation-atom
    mesos-run-as-user pool-name compute-clusters job->acceptable-compute-clusters-fn
-   user->quota user->usage-future]
+   user->quota user->usage-future] 
+  (log-structured/info "Creating handler for Fenzo pool" {:pool pool-name})
   (let [num-considerable @fenzo-num-considerable-atom
         next-considerable
         (try
@@ -2250,6 +2251,7 @@
   [conn pending-jobs pool-name->pending-jobs-atom
    pool-name compute-clusters job->acceptable-compute-clusters-fn
    user->quota user->usage-future num-considerable mesos-run-as-user]
+  (log-structured/info "Creating handler for Kubernetes Scheduler pool" {:pool pool-name})
   (try
     (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
                                              :tags {:pool pool-name :component tracing-component-tag}}]
@@ -2346,6 +2348,7 @@
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
    kubernetes-scheduler-config]
+  (log-structured/info (print-str "Kubernetes scheduler config:" kubernetes-scheduler-config " " (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
         kubernetes-scheduler-pool? (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)]
