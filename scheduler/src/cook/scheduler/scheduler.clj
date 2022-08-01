@@ -2291,10 +2291,12 @@
 
                 ;; Get sequence of db txns which update all jobs across compute-clusters. 
                 task-txns (kubernetes-pool->task-txns compute-cluster->zip-job-metadata)]
-            (log-structured/info "Started launching directly to Kubernetes" {:pool pool-name})
+            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name})
             (->> compute-cluster->zip-job-metadata
                  (map
                   (fn [[compute-cluster zip-job-metadata]]
+                    (log-structured/debug "Aquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
+                                         {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq zip-job-metadata})
                     (let [kill-lock-object (cc/kill-lock-object compute-cluster)]
                       (try
                         (.. kill-lock-object readLock lock)
@@ -2312,14 +2314,11 @@
                             (throw e))))
                         (timers/time!
                          (timers/timer (metric-title "handle-kubernetes-pool-submit-duration" pool-name))
-                         (do
-                           (log-structured/info "Launching tasks for kubernetes ompute cluster"
-                                                {:pool pool-name :compute-cluster compute-cluster})
-                           (future (cc/launch-tasks compute-cluster
-                                                    pool-name
-                                                    [{:task-metadata-seq (:task-metadata-seq zip-job-metadata)}]
-                                             ;; TODO(alexh): any post processing such as updating launch rate limiting?
-                                                    (fn [_])))))
+                         (future (cc/launch-tasks compute-cluster
+                                                  pool-name
+                                                  [{:task-metadata-seq (:task-metadata-seq zip-job-metadata)}]
+                                                    ;; TODO(alexh): any post processing such as updating launch rate limiting?
+                                                  (fn [_]))))
                         (finally
                           (.. kill-lock-object readLock unlock))))))
                  doall
@@ -2348,6 +2347,7 @@
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
    kubernetes-scheduler-config]
+  ;; TODO(alexh): remove after testing
   (log-structured/info (print-str "Kubernetes scheduler config in make-pool-handler:" kubernetes-scheduler-config " " (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
