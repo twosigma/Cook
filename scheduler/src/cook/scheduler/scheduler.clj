@@ -2251,7 +2251,7 @@
   [conn pending-jobs pool-name->pending-jobs-atom
    pool-name compute-clusters job->acceptable-compute-clusters-fn
    user->quota user->usage-future num-considerable mesos-run-as-user]
-  (log-structured/info "Creating handler for Kubernetes Scheduler pool" {:pool pool-name})
+  (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
   (try
     (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
                                              :tags {:pool pool-name :component tracing-component-tag}}]
@@ -2263,7 +2263,8 @@
                               (->> pool-name
                                    pending-jobs
                                    (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                                                        user->quota user->usage (tools/global-pool-quota (config/pool-quotas) pool-name))
+                                                                        user->quota user->usage 
+                                                                        (tools/global-pool-quota pool-name))
                                    (take num-considerable)
                                    (doall)))
           ;; TODO(alexh): really filter considerable-jobs for launch rate limit
@@ -2348,7 +2349,7 @@
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
    kubernetes-scheduler-config]
-  (log-structured/info (print-str "Kubernetes scheduler config:" kubernetes-scheduler-config " " (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
+  (log-structured/info (print-str "Kubernetes scheduler config in make-pool-handler:" kubernetes-scheduler-config " " (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
         kubernetes-scheduler-pool? (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)]
