@@ -2143,12 +2143,12 @@
                                          :tags {:pool pool-name :component tracing-component-tag}}]
                     (doseq [offer offers
                             :let [slave-id (-> offer :slave-id :value)]]
-                                                 ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
-                                                 ; Computing get-offer-attr-map is pretty expensive because it includes calculating
-                                                 ; currently running pods, so we have to union the set of pods k8s says are there and
-                                                 ; the set of pods we're trying to put on the node. Even though it's not used by
-                                                 ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
-                                                 ; and only store if it is a new node.
+                      ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
+                      ; Computing get-offer-attr-map is pretty expensive because it includes calculating
+                      ; currently running pods, so we have to union the set of pods k8s says are there and
+                      ; the set of pods we're trying to put on the node. Even though it's not used by
+                      ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
+                      ; and only store if it is a new node.
                       (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
                         (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
                 user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
@@ -2378,8 +2378,13 @@
                          (future (cc/launch-tasks compute-cluster
                                                   pool-name
                                                   [{:task-metadata-seq task-metadata-seq}]
-                                                  ;; TODO(alexh): any post processing such as updating launch rate limiting?
-                                                  (fn [_]))))
+                                                  (fn process-task-post-launch!
+                                                    [{:keys [_ task-request]}]
+                                                    (let [user (get-in task-request [:job :job/user])
+                                                          compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
+                                                          token-key (quota/pool+user->token-key pool-name user)]
+                                                      (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
+                                                      (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))))))
                         (finally
                           (.. kill-lock-object readLock unlock))))))
                  doall
