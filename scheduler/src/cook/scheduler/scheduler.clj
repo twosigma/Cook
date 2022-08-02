@@ -38,7 +38,7 @@
             [cook.plugins.definitions :as plugins]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
-            [cook.prometheus-metrics :as prometheus]
+            [cook.prometheus-metrics :as prom]
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
@@ -210,8 +210,8 @@
   "Takes a status update from mesos."
   [conn pool-name->fenzo-state status]
   (log/info "Instance status is:" status)
-    (prometheus/with-duration
-      prometheus/scheduler-handle-status-update-duaration {}
+    (prom/with-duration
+      prom/scheduler-handle-status-update-duaration {}
       (timers/time!
         handle-status-update-duration
         (try (let [db (db conn)
@@ -338,8 +338,8 @@
   [conn {:keys [handle-exit-code handle-progress-message]}
    {:strs [exit-code progress-message progress-percent progress-sequence task-id] :as message}]
   (log/info "Received framework message:" {:task-id task-id, :message message})
-  (prometheus/with-duration
-    prometheus/scheduler-handle-framework-message-duration {}
+  (prom/with-duration
+    prom/scheduler-handle-framework-message-duration {}
     (timers/time!
       handle-framework-message-duration
       (try
@@ -647,8 +647,8 @@
                                              :tags {:pool pool-name :component tracing-component-tag}}]
                                          (locking fenzo
                                            (unassign-all pool-name unassigner to-unassign)
-                                           (prometheus/with-duration
-                                             prometheus/scheduler-fenzo-schedule-once-duration {:pool pool-name}
+                                           (prom/with-duration
+                                             prom/scheduler-fenzo-schedule-once-duration {:pool pool-name}
                                              (timers/time!
                                                (timers/timer (metric-title "fenzo-schedule-once-duration" pool-name))
                                                (.scheduleOnce fenzo requests leases)))))
@@ -695,8 +695,8 @@
   [unfiltered-db pool-name]
   (tracing/with-span
     [s {:name "scheduler.generate-user-usage-map" :tags {:pool pool-name :component tracing-component-tag}}]
-    (prometheus/with-duration
-      prometheus/scheduler-generate-user-usage-map-duration {:pool pool-name}
+    (prom/with-duration
+      prom/scheduler-generate-user-usage-map-duration {:pool pool-name}
       (timers/time!
         generate-user-usage-map-duration
         (->> (tools/get-running-task-ents unfiltered-db)
@@ -845,6 +845,7 @@
                 token-key (quota/pool+user->token-key pool-name user)]
             (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
             (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
+          (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})
           (locking fenzo
             (-> fenzo
                 (.getTaskAssigner)
@@ -943,8 +944,8 @@
                             :compute-cluster compute-cluster-name
                             :pool pool-name
                             :number-tasks count-txns})
-      (prometheus/with-duration
-        prometheus/scheduler-launch-all-matched-tasks-total-duration {:pool pool-name}
+      (prom/with-duration
+        prom/scheduler-launch-all-matched-tasks-total-duration {:pool pool-name}
         (timers/time!
           (timers/timer (metric-title "launch-matched-tasks-all-duration" pool-name))
           (try
@@ -954,8 +955,8 @@
             ;; during a race. If that happens, then other jobs that should
             ;; be scheduled will not be eligible for rescheduling until
             ;; the pending-jobs atom is repopulated
-            (prometheus/with-duration
-              prometheus/scheduler-launch-all-matched-tasks-transact-duration {:pool pool-name}
+            (prom/with-duration
+              prom/scheduler-launch-all-matched-tasks-transact-duration {:pool pool-name}
               (timers/time!
                 (timers/timer (metric-title "handle-resource-offer!-transact-task-duration" pool-name))
                 (datomic/transact
@@ -975,8 +976,8 @@
             ;; Launching the matched tasks MUST happen after the above transaction in
             ;; order to allow a transaction failure (due to failed preconditions)
             ;; to block the launch
-            (prometheus/with-duration
-              prometheus/scheduler-launch-all-matched-tasks-submit-duration {:pool pool-name}
+            (prom/with-duration
+              prom/scheduler-launch-all-matched-tasks-submit-duration {:pool pool-name}
               (timers/time!
                 (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
                 (let [_ (log-structured/info "Launching matched tasks for compute cluster"
@@ -1066,8 +1067,8 @@
   [pending-jobs-for-autoscaling pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (tracing/with-span
     [s {:name "scheduler.trigger-autoscaling" :tags {:component tracing-component-tag}}]
-    (prometheus/with-duration
-      prometheus/scheduler-trigger-autoscaling-duration {:pool pool-name}
+    (prom/with-duration
+      prom/scheduler-trigger-autoscaling-duration {:pool pool-name}
       (timers/time!
         (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
         (try
@@ -1118,14 +1119,14 @@
       (do (log-structured/info "total match cycle metric"
                                {:inputs {:jobs-considerable 0} :pool pool-name} nil match-cycle-logger-ns)
           ; Also reset any prometheus metrics for accuracy
-          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "matched"} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-matched-percent {:pool pool-name} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-all-matched {:pool pool-name} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-head-was-matched {:pool pool-name} 0)
-          (prometheus/set prometheus/scheduler-match-cycle-queue-was-full {:pool pool-name} 0))
+          (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "matched"} 0)
+          (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} 0)
+          (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} 0)
+          (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} 0)
+          (prom/set prom/scheduler-match-cycle-matched-percent {:pool pool-name} 0)
+          (prom/set prom/scheduler-match-cycle-all-matched {:pool pool-name} 0)
+          (prom/set prom/scheduler-match-cycle-head-was-matched {:pool pool-name} 0)
+          (prom/set prom/scheduler-match-cycle-queue-was-full {:pool pool-name} 0))
       ; nonzero considerables case
       (do
         ; compute the considerable, matched, and unmatched jobs for each user and emit individual metrics
@@ -1153,14 +1154,14 @@
                                       :offers (offers->stats offers)
                                       :head-resources head-resources}}
                              nil match-cycle-logger-ns)
-        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "matched"} number-matched-jobs)
-        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} number-considerable-jobs)
-        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} number-unmatched-jobs)
-        (prometheus/set prometheus/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} max-considerable)
-        (prometheus/set prometheus/scheduler-match-cycle-matched-percent {:pool pool-name} match-percent)
-        (prometheus/set prometheus/scheduler-match-cycle-all-matched {:pool pool-name} (if (= match-percent 1.0) 1 0))
-        (prometheus/set prometheus/scheduler-match-cycle-head-was-matched {:pool pool-name} (if head-matched? 1 0))
-        (prometheus/set prometheus/scheduler-match-cycle-queue-was-full {:pool pool-name} (if queue-was-full? 1 0))))
+        (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "matched"} number-matched-jobs)
+        (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} number-considerable-jobs)
+        (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} number-unmatched-jobs)
+        (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} max-considerable)
+        (prom/set prom/scheduler-match-cycle-matched-percent {:pool pool-name} match-percent)
+        (prom/set prom/scheduler-match-cycle-all-matched {:pool pool-name} (if (= match-percent 1.0) 1 0))
+        (prom/set prom/scheduler-match-cycle-head-was-matched {:pool pool-name} (if head-matched? 1 0))
+        (prom/set prom/scheduler-match-cycle-queue-was-full {:pool pool-name} (if queue-was-full? 1 0))))
 
     (counters/inc! cycle-considerable number-considerable-jobs)
     (counters/inc! cycle-matched number-matched-jobs)
@@ -1178,22 +1179,22 @@
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
     (tracing/with-span
       [s {:name "scheduler.handle-resource-offers" :tags {:pool pool-name :component tracing-component-tag}}]
-      (prometheus/with-duration
-        prometheus/scheduler-handle-resource-offers-total-duration {:pool pool-name}
+      (prom/with-duration
+        prom/scheduler-handle-resource-offers-total-duration {:pool pool-name}
         (timers/time!
           (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
           (try
             (let [db (db conn)
                   pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-                  considerable-jobs (prometheus/with-duration
-                                      prometheus/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
+                  considerable-jobs (prom/with-duration
+                                      prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
                                       (timers/time!
                                         (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
                                         (pending-jobs->considerable-jobs
                                           db pending-jobs user->quota user->usage num-considerable pool-name)))
                   ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
-                  {:keys [matches failures]} (prometheus/with-duration
-                                               prometheus/scheduler-handle-resource-offers-match-duration {:pool pool-name}
+                  {:keys [matches failures]} (prom/with-duration
+                                               prom/scheduler-handle-resource-offers-match-duration {:pool pool-name}
                                                (timers/time!
                                                  (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
                                                  (match-offer-to-schedule db fenzo-state considerable-jobs offers
@@ -1203,8 +1204,8 @@
                   offers-scheduled (for [{:keys [leases]} matches
                                          lease leases]
                                      (:offer lease))
-                  matched-job-uuids (prometheus/with-duration
-                                      prometheus/scheduler-handle-resource-offers-matches-to-job-uuids-duration {:pool pool-name}
+                  matched-job-uuids (prom/with-duration
+                                      prom/scheduler-handle-resource-offers-matches-to-job-uuids-duration {:pool pool-name}
                                       (timers/time!
                                         (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool-name))
                                         (matches->job-uuids matches pool-name)))
@@ -1433,8 +1434,8 @@
       trigger-chan
       (fn match-jobs-event []
         (log-structured/info "Starting offer matching" {:pool pool-name})
-        (prometheus/with-duration
-          prometheus/scheduler-match-cycle-duration {:pool pool-name}
+        (prom/with-duration
+          prom/scheduler-match-cycle-duration {:pool pool-name}
           (timers/time!
             (timers/timer (metric-title "match-jobs-event" pool-name))
             (tracing/with-span
@@ -1738,8 +1739,8 @@
   (tools/chime-at-ch
     trigger-chan
     (fn cancelled-task-killer-event []
-      (prometheus/with-duration
-        prometheus/scheduler-kill-cancelled-tasks-duration {}
+      (prom/with-duration
+        prom/scheduler-kill-cancelled-tasks-duration {}
         (timers/time!
           killing-cancelled-tasks-duration
           (doseq [{:keys [db/id instance/task-id] :as task} (killable-cancelled-tasks (d/db conn))]
@@ -1811,8 +1812,8 @@
   (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (tools/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
-        jobs (prometheus/with-duration
-               prometheus/scheduler-sort-jobs-hierarchy-duration {:pool pool-name}
+        jobs (prom/with-duration
+               prom/scheduler-sort-jobs-hierarchy-duration {:pool pool-name}
                (timers/time!
                  sort-jobs-duration
                  (->> tasks
@@ -1947,8 +1948,8 @@
   ;; TODO these limits should come from the largest observed host from Fenzo
   ;; .getResourceStatus on TaskScheduler will give a map of hosts to resources; we can compute the max over those
   [{max-memory-gb :memory-gb max-cpus :cpus} offensive-jobs-ch jobs]
-  (prometheus/with-duration
-    prometheus/scheduler-filter-offensive-jobs-duration {}
+  (prom/with-duration
+    prom/scheduler-filter-offensive-jobs-duration {}
     (timers/time!
       filter-offensive-jobs-duration
       (let [max-memory-mb (* 1024.0 max-memory-gb)
@@ -1999,8 +2000,8 @@
 
    It ranks the jobs by dru first and then apply several filters if provided."
   [unfiltered-db offensive-job-filter]
-  (prometheus/with-duration
-    prometheus/scheduler-rank-cycle-duration {}
+  (prom/with-duration
+    prom/scheduler-rank-cycle-duration {}
     (timers/time!
       rank-jobs-duration
       (try
