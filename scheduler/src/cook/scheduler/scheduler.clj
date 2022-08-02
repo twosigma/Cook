@@ -2323,7 +2323,7 @@
                         @user->usage-future)
           ;; We need to filter pending jobs based on quota so that we don't
           ;; submit beyond what users have quota to actually run.
-          considerable-jobs (tracing/with-span [s {:name "scheduler.handle-kubernetes-pool.generate-considerable-jobs"
+          considerable-jobs (tracing/with-span [s {:name "scheduler.kubernetes-handler.generate-considerable-jobs"
                                                    :tags {:pool pool-name :component tracing-component-tag}}]
                               (->> pending-jobs
                                    (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
@@ -2362,7 +2362,7 @@
                                              {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq task-metadata-seq})
                         (.. kill-lock-object readLock lock)
                         (timers/time!
-                         (timers/timer (metric-title "handle-kubernetes-pool-transact-task-duration" pool-name))
+                         (timers/timer (metric-title "kubernetes-handler-transact-task-duration" pool-name))
                          (datomic/transact
                           conn
                           (reduce into [] task-txns)
@@ -2374,7 +2374,7 @@
                                                  e)
                             (throw e))))
                         (timers/time!
-                         (timers/timer (metric-title "handle-kubernetes-pool-submit-duration" pool-name))
+                         (timers/timer (metric-title "kubernetes-handler-launch-duration" pool-name))
                          (future (cc/launch-tasks compute-cluster
                                                   pool-name
                                                   [{:task-metadata-seq task-metadata-seq}]
