@@ -20,7 +20,6 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.pprint :as pprint]
             [clojure.string :as str]
             [clojure.test :refer :all]
             [clojure.tools.logging :as log]
@@ -2608,13 +2607,13 @@
           ;; TODOL count(jobs) == count(metadata)
           ;; TODO: for each job, get metadata where (metadata :environment "COOK_JOB_UUID" == (job (str uuid)))
 
-          (println "@ALEX@")
+          ;; (println "@ALEX@")
 
-          (pprint/pprint (sched/kubernetes-pool->zip-job-metadata
-                          compute-cluster->jobs
-                          jobs->task-id
-                          mesos-run-as-user
-                          "test-pool"))
+          ;; (pprint/pprint (sched/kubernetes-pool->zip-job-metadata
+          ;;                 compute-cluster->jobs
+          ;;                 jobs->task-id
+          ;;                 mesos-run-as-user
+          ;;                 "test-pool"))
 
 
 

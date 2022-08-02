@@ -2201,16 +2201,47 @@
                 max-considerable)
               next-considerable))))
 
-(defn kubernetes-pool->task-txns
-  "Converts jobs and metadata to task transactions."
-  [compute-cluster->zip-job-metadata]
-  (for [[compute-cluster zip-job-metadata] compute-cluster->zip-job-metadata
-        {:keys [jobs task-metadata-seq]} zip-job-metadata
-        [job task-metadata] (map vector jobs task-metadata-seq)
-        :let [{:keys [job/last-waiting-start-time job/uuid]} job
-              {:keys [executor task-id]} task-metadata
-              job-ref [:job/uuid uuid]
-              instance-start-time (now)]]
+;; (defn kubernetes-pool->task-txns
+;;   "Converts jobs and metadata to task transactions."
+;;   [compute-cluster->zip-job-metadata]
+;;   (for [[compute-cluster zip-job-metadata] compute-cluster->zip-job-metadata
+;;         {:keys [jobs task-metadata-seq]} zip-job-metadata
+;;         [job task-metadata] (map vector jobs task-metadata-seq)
+;;         :let [{:keys [job/last-waiting-start-time job/uuid]} job
+;;               {:keys [executor task-id]} task-metadata
+;;               job-ref [:job/uuid uuid]
+;;               instance-start-time (now)]]
+;;     [[:job/allowed-to-start? job-ref]
+;;      ;; NB we set any job with an instance in a non-terminal
+;;      ;; state to running to prevent scheduling the same job
+;;      ;; twice; see schema definition for state machine
+;;      [:db/add job-ref :job/state :job.state/running]
+;;      (cond->
+;;       {:db/id (d/tempid :db.part/user)
+;;        :job/_instance job-ref
+;;        :instance/executor executor
+;;        :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
+;;        :instance/hostname "fake-hostname"
+;;        :instance/ports "fake-ports"
+;;        :instance/preempted? false
+;;        :instance/progress 0
+;;        :instance/slave-id "fake-slave-id"
+;;        :instance/start-time instance-start-time
+;;        :instance/status :instance.status/unknown
+;;        :instance/task-id task-id
+;;        :instance/compute-cluster (cc/db-id compute-cluster)}
+;;        last-waiting-start-time
+;;        (assoc :instance/queue-time
+;;               (- (.getTime instance-start-time)
+;;                  (.getTime ^Date last-waiting-start-time))))]))
+
+(defn job->task-txn
+  "Generate task transaction for a job."
+  [job metadata compute-cluster]
+  (let [{:keys [job/last-waiting-start-time job/uuid]} job
+        {:keys [executor task-id]} metadata
+        job-ref [:job/uuid uuid]
+        instance-start-time (now)]
     [[:job/allowed-to-start? job-ref]
      ;; NB we set any job with an instance in a non-terminal
      ;; state to running to prevent scheduling the same job
@@ -2235,30 +2266,50 @@
               (- (.getTime instance-start-time)
                  (.getTime ^Date last-waiting-start-time))))]))
 
-(defn kubernetes-pool->zip-job-metadata
-  "For each compute cluster, zip its considerble jobs and newly generated task-metadata-seq."
-  [compute-cluster->jobs jobs->task-id mesos-run-as-user pool-name]
-  (zipmap (keys compute-cluster->jobs)
-          (for [[compute-cluster jobs-for-cluster] compute-cluster->jobs
-                :let [task-metadata-seq (map
-                                         (fn [{:keys [job/name job/user job/uuid job/environment] :as job}]
-                                           (let [pool-specific-resources
-                                                 ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
-                                             ;; TODO(alexh): is this everything needed to launch a real task?
-                                             (merge
-                                              (task/job->task-metadata compute-cluster mesos-run-as-user
-                                                                       job (jobs->task-id job))
-                                              {:task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-                                                              :job {:job/pool {:pool/name pool-name}
-                                                                    :job/environment environment
-                                                                    :job/name name
-                                                                    :job/user user
-                                                                    :job/uuid uuid}
-                                                              ; Need to pass in resources to task-metadata->pod for gpu count
-                                                              :resources pool-specific-resources}}))) 
-                                         jobs-for-cluster)]]
-            {:jobs jobs-for-cluster
-             :task-metadata-seq task-metadata-seq})))
+;; (defn kubernetes-pool->zip-job-metadata
+;;   "For each compute cluster, zip its considerble jobs and newly generated task-metadata-seq."
+;;   [compute-cluster->jobs jobs->task-id mesos-run-as-user pool-name]
+;;   (zipmap (keys compute-cluster->jobs)
+;;           (for [[compute-cluster jobs-for-cluster] compute-cluster->jobs
+;;                 :let [task-metadata-seq (map
+;;                                          (fn [{:keys [job/name job/user job/uuid job/environment] :as job}]
+;;                                            (let [pool-specific-resources
+;;                                                  ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+;;                                              ;; TODO(alexh): is this everything needed to launch a real task?
+;;                                              (merge
+;;                                               (task/job->task-metadata compute-cluster mesos-run-as-user
+;;                                                                        job (jobs->task-id job))
+;;                                               {:task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+;;                                                               :job {:job/pool {:pool/name pool-name}
+;;                                                                     :job/environment environment
+;;                                                                     :job/name name
+;;                                                                     :job/user user
+;;                                                                     :job/uuid uuid}
+;;                                                               ; Need to pass in resources to task-metadata->pod for gpu count
+;;                                                               :resources pool-specific-resources}}))) 
+;;                                          jobs-for-cluster)]]
+;;             {:jobs jobs-for-cluster
+;;              :task-metadata-seq task-metadata-seq})))
+
+(defn jobs->kubernetes-task-metadata
+  "Generate sequence of task-metadata for jobs in a compute-cluster, suitable for Kubernetes Scheduler."
+  [jobs pool-name mesos-run-as-user compute-cluster]
+  (let [jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)]
+    (for [{:keys [job/name job/user job/uuid job/environment] :as job} jobs]
+      (let [pool-specific-resources
+            ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+        ;; TODO(alexh): is this everything needed to launch a real task?
+        (merge
+         (task/job->task-metadata compute-cluster mesos-run-as-user
+                                  job (jobs->task-id job))
+         {:task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                         :job {:job/pool {:pool/name pool-name}
+                               :job/environment environment
+                               :job/name name
+                               :job/user user
+                               :job/uuid uuid}
+                         ; Need to pass in resources to task-metadata->pod for gpu count
+                         :resources pool-specific-resources}})))))
 
 (defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs using the Kubernetes Scheduler."
@@ -2280,12 +2331,11 @@
                                                                         (tools/global-pool-quota pool-name))
                                    (take num-considerable)
                                    (doall)))
-          ;; TODO(alexh): really filter considerable-jobs for launch rate limit
+          ;; TODO(alexh): filter considerable-jobs for launch rate limit
           jobs (take 3 considerable-jobs)
           job-uuids (set (map :job/uuid jobs))]
-      ;; TODO(alexh): remove
-      (log-structured/info (print-str "Considering jobs:" job-uuids)
-                            {:pool pool-name})
+      ;; TODO(alexh): remove/reduce logging
+      (log-structured/info (print-str "Considering jobs:" job-uuids) {:pool pool-name})
       (if (seq jobs)
         (do
           (swap! pool-name->pending-jobs-atom
@@ -2294,29 +2344,22 @@
           (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
                                 {:pool pool-name})
           (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-                ;; First, distribute each job to a compute cluster
+                ;; Distribute each job to a compute cluster
                 ;; TODO(alexh): confirm this is random
                 compute-cluster->jobs (distribute-jobs-to-compute-clusters
                                        jobs pool-name autoscaling-compute-clusters
-                                       job->acceptable-compute-clusters-fn)
-                ;; Get a task-id (instance) for each job
-                jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)
-
-                ;; Combine jobs for each cluster with a fake task-metadata-seq
-                ;; This will be used to generate all db txns and then to launch the tasks.
-                compute-cluster->zip-job-metadata (kubernetes-pool->zip-job-metadata compute-cluster->jobs jobs->task-id mesos-run-as-user pool-name)
-
-                ;; Get sequence of db txns which update all jobs across compute-clusters. 
-                task-txns (kubernetes-pool->task-txns compute-cluster->zip-job-metadata)]
-            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name})
-            (->> compute-cluster->zip-job-metadata
+                                       job->acceptable-compute-clusters-fn)]
+            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name}) 
+            (->> compute-cluster->jobs
                  (map
-                  (fn [[compute-cluster zip-job-metadata]]
-                    ;; TODO(alexh): remove
-                    (log-structured/info "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
-                                         {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq zip-job-metadata})
-                    (let [kill-lock-object (cc/kill-lock-object compute-cluster)]
+                  (fn [[compute-cluster jobs]] 
+                    (let [kill-lock-object (cc/kill-lock-object compute-cluster)
+                          task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+                          task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
                       (try
+                        ;; TODO(alexh): remove/reduce logging
+                        (log-structured/info "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
+                                             {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq task-metadata-seq})
                         (.. kill-lock-object readLock lock)
                         (timers/time!
                          (timers/timer (metric-title "handle-kubernetes-pool-transact-task-duration" pool-name))
@@ -2334,7 +2377,7 @@
                          (timers/timer (metric-title "handle-kubernetes-pool-submit-duration" pool-name))
                          (future (cc/launch-tasks compute-cluster
                                                   pool-name
-                                                  [{:task-metadata-seq (:task-metadata-seq zip-job-metadata)}]
+                                                  [{:task-metadata-seq task-metadata-seq}]
                                                   ;; TODO(alexh): any post processing such as updating launch rate limiting?
                                                   (fn [_]))))
                         (finally
