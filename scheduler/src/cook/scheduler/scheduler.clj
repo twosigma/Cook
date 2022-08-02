@@ -2161,11 +2161,11 @@
                                                        job->acceptable-compute-clusters-fn)]
             (when (seq offers)
               (reset! resources-atom (view-incubating-offers fenzo)))
-                      ;; This check ensures that, although we value Fenzo's optimizations,
-                      ;; we also value Cook's sensibility of fairness when deciding which jobs
-                      ;; to schedule.  If Fenzo produces a set of matches that doesn't include
-                      ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
-                      ;; freedom in the form of fewer jobs to consider.
+            ;; This check ensures that, although we value Fenzo's optimizations,
+            ;; we also value Cook's sensibility of fairness when deciding which jobs
+            ;; to schedule.  If Fenzo produces a set of matches that doesn't include
+            ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
+            ;; freedom in the form of fewer jobs to consider.
             (if matched-head?
               max-considerable
               (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
@@ -2283,12 +2283,15 @@
           ;; TODO(alexh): really filter considerable-jobs for launch rate limit
           jobs (take 3 considerable-jobs)
           job-uuids (set (map :job/uuid jobs))]
+      ;; TODO(alexh): remove
+      (log-structured/info (print-str "Considering jobs:" job-uuids)
+                            {:pool pool-name})
       (if (seq jobs)
         (do
           (swap! pool-name->pending-jobs-atom
                  remove-matched-jobs-from-pending-jobs
                  job-uuids pool-name)
-          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
+          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
                                 {:pool pool-name})
           (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
                 ;; First, distribute each job to a compute cluster
@@ -2309,7 +2312,8 @@
             (->> compute-cluster->zip-job-metadata
                  (map
                   (fn [[compute-cluster zip-job-metadata]]
-                    (log-structured/info "Aquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
+                    ;; TODO(alexh): remove
+                    (log-structured/info "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
                                          {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq zip-job-metadata})
                     (let [kill-lock-object (cc/kill-lock-object compute-cluster)]
                       (try
@@ -2337,7 +2341,7 @@
                           (.. kill-lock-object readLock unlock))))))
                  doall
                  (run! deref))
-            (log-structured/info "Done launching directly to Kubernetes" {:pool pool-name})))
+            (log-structured/info "Launched jobs" {:pool pool-name :numer-launched-jobs (count job-uuids)})))
         (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
     (catch Exception e
       (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
@@ -2365,6 +2369,7 @@
   (log-structured/info (print-str "Kubernetes scheduler config in make-pool-handler:" kubernetes-scheduler-config " " (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
+        using-pools? (not (nil? (config/default-pool)))
         kubernetes-scheduler-pool? (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)]
     (reset! fenzo-num-considerable-atom fenzo-max-jobs-considered)
     (tools/chime-at-ch
@@ -2373,8 +2378,7 @@
        (log-structured/info "Starting pool handler" {:pool pool-name})
        (try
          (let [user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
-               compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
-               using-pools? (not (nil? (config/default-pool)))
+               compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom) 
                user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
            (if kubernetes-scheduler-pool?
