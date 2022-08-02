@@ -2201,40 +2201,6 @@
                 max-considerable)
               next-considerable))))
 
-;; (defn kubernetes-pool->task-txns
-;;   "Converts jobs and metadata to task transactions."
-;;   [compute-cluster->zip-job-metadata]
-;;   (for [[compute-cluster zip-job-metadata] compute-cluster->zip-job-metadata
-;;         {:keys [jobs task-metadata-seq]} zip-job-metadata
-;;         [job task-metadata] (map vector jobs task-metadata-seq)
-;;         :let [{:keys [job/last-waiting-start-time job/uuid]} job
-;;               {:keys [executor task-id]} task-metadata
-;;               job-ref [:job/uuid uuid]
-;;               instance-start-time (now)]]
-;;     [[:job/allowed-to-start? job-ref]
-;;      ;; NB we set any job with an instance in a non-terminal
-;;      ;; state to running to prevent scheduling the same job
-;;      ;; twice; see schema definition for state machine
-;;      [:db/add job-ref :job/state :job.state/running]
-;;      (cond->
-;;       {:db/id (d/tempid :db.part/user)
-;;        :job/_instance job-ref
-;;        :instance/executor executor
-;;        :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
-;;        :instance/hostname "fake-hostname"
-;;        :instance/ports "fake-ports"
-;;        :instance/preempted? false
-;;        :instance/progress 0
-;;        :instance/slave-id "fake-slave-id"
-;;        :instance/start-time instance-start-time
-;;        :instance/status :instance.status/unknown
-;;        :instance/task-id task-id
-;;        :instance/compute-cluster (cc/db-id compute-cluster)}
-;;        last-waiting-start-time
-;;        (assoc :instance/queue-time
-;;               (- (.getTime instance-start-time)
-;;                  (.getTime ^Date last-waiting-start-time))))]))
-
 (defn job->task-txn
   "Generate task transaction for a job."
   [job metadata compute-cluster]
@@ -2265,31 +2231,6 @@
        (assoc :instance/queue-time
               (- (.getTime instance-start-time)
                  (.getTime ^Date last-waiting-start-time))))]))
-
-;; (defn kubernetes-pool->zip-job-metadata
-;;   "For each compute cluster, zip its considerble jobs and newly generated task-metadata-seq."
-;;   [compute-cluster->jobs jobs->task-id mesos-run-as-user pool-name]
-;;   (zipmap (keys compute-cluster->jobs)
-;;           (for [[compute-cluster jobs-for-cluster] compute-cluster->jobs
-;;                 :let [task-metadata-seq (map
-;;                                          (fn [{:keys [job/name job/user job/uuid job/environment] :as job}]
-;;                                            (let [pool-specific-resources
-;;                                                  ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
-;;                                              ;; TODO(alexh): is this everything needed to launch a real task?
-;;                                              (merge
-;;                                               (task/job->task-metadata compute-cluster mesos-run-as-user
-;;                                                                        job (jobs->task-id job))
-;;                                               {:task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-;;                                                               :job {:job/pool {:pool/name pool-name}
-;;                                                                     :job/environment environment
-;;                                                                     :job/name name
-;;                                                                     :job/user user
-;;                                                                     :job/uuid uuid}
-;;                                                               ; Need to pass in resources to task-metadata->pod for gpu count
-;;                                                               :resources pool-specific-resources}}))) 
-;;                                          jobs-for-cluster)]]
-;;             {:jobs jobs-for-cluster
-;;              :task-metadata-seq task-metadata-seq})))
 
 (defn jobs->kubernetes-task-metadata
   "Generate sequence of task-metadata for jobs in a compute-cluster, suitable for Kubernetes Scheduler."
@@ -2323,16 +2264,12 @@
                         @user->usage-future)
           ;; We need to filter pending jobs based on quota so that we don't
           ;; submit beyond what users have quota to actually run.
-          considerable-jobs (tracing/with-span [s {:name "scheduler.kubernetes-handler.generate-considerable-jobs"
-                                                   :tags {:pool pool-name :component tracing-component-tag}}]
-                              (->> pending-jobs
-                                   (tools/filter-pending-jobs-for-quota pool-name (atom {}) (atom {})
-                                                                        user->quota user->usage 
-                                                                        (tools/global-pool-quota pool-name))
-                                   (take num-considerable)
-                                   (doall)))
-          ;; TODO(alexh): filter considerable-jobs for launch rate limit
-          jobs (take 3 considerable-jobs)
+          jobs (prometheus/with-duration
+                              prometheus/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
+                              (timers/time!
+                               (timers/timer (metric-title "kubernetes-handler-considerable-jobs-duration" pool-name))
+                               (pending-jobs->considerable-jobs
+                                db pending-jobs user->quota user->usage num-considerable pool-name)))
           job-uuids (set (map :job/uuid jobs))]
       ;; TODO(alexh): remove/reduce logging
       (log-structured/info (print-str "Considering jobs:" job-uuids) {:pool pool-name})
@@ -2400,8 +2337,6 @@
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
    kubernetes-scheduler-config]
-  ;; TODO(alexh): remove after testing
-  (log-structured/info (print-str "Kubernetes scheduler config in make-pool-handler:" kubernetes-scheduler-config " " (config/is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
         using-pools? (not (nil? (config/default-pool)))
