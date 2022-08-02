@@ -3,6 +3,7 @@
             [cook.config :as config]
             [datomic.api :as d]))
 
+; this is used in share and quota applications that look at per-pool resources
 (defn check-pool
   "Returns true if requesting-default-pool? and the entity does not have a pool
    or the entity has a pool named pool-name"
@@ -16,6 +17,8 @@
 
 (def nil-pool "nil-pool")
 
+; this is used in job submission applications where users are primarily concerned
+; with submit-pool
 (defn check-pool-and-submit-pool
   "Returns true if requesting-default-pool? and the entity does not have a pool
    or the entity has either a pool or a submit-pool named pool-name"

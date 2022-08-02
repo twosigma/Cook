@@ -2250,6 +2250,7 @@
                                     :submit-pool-name "foo")]
         (is (= 1 (count (list-jobs-fn "foo-1"))))
         (is (= 1 (count (list-jobs-fn "foo-2"))))
+        ; Should be 3 to account for the previously submitted jobs
         (is (= 3 (count (list-jobs-fn "foo"))))))))
 
 (deftest test-name-filter-str->name-filter-pattern
