@@ -2262,6 +2262,7 @@
     (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
                                              :tags {:pool pool-name :component tracing-component-tag}}]
                         @user->usage-future)
+          db (db conn)
           ;; We need to filter pending jobs based on quota so that we don't
           ;; submit beyond what users have quota to actually run.
           jobs (prometheus/with-duration
