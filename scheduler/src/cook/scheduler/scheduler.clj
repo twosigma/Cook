@@ -2252,11 +2252,11 @@
        :job/_instance job-ref
        :instance/executor executor
        :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
-       :instance/hostname "fake-hostname"
+       :instance/hostname "Unknown"
        :instance/ports 9876
        :instance/preempted? false
        :instance/progress 0
-       :instance/slave-id "fake-slave-id"
+       :instance/slave-id "Unknown"
        :instance/start-time instance-start-time
        :instance/status :instance.status/unknown
        :instance/task-id task-id
@@ -2389,14 +2389,6 @@
     (catch Exception e
       (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
 
-(defn is-kubernetes-scheduler-pool?
-  "Check if a given pool uses the Kubernetes Scheduler."
-  [kubernetes-scheduler-config pool-name]
-  (let [pools-pattern (-> kubernetes-scheduler-config
-                          :pool-regex
-                          re-pattern)]
-    (not (nil? (re-find pools-pattern pool-name)))))
-
 (defn make-pool-handler
   "Make the configured handler for the pool to do scheduling."
   [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered scaleback
@@ -2408,7 +2400,7 @@
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
         using-pools? (not (nil? (config/default-pool)))
-        kubernetes-scheduler-pool? (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)]
+        kubernetes-scheduler-pool? (config/is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)]
     (reset! fenzo-num-considerable-atom fenzo-max-jobs-considered)
     (tools/chime-at-ch
      trigger-chan

@@ -536,7 +536,8 @@
      :kubernetes-scheduler (fnk [[:config {kubernetes-scheduler {}}]]
                                 (merge
                                  {:pool-regex "$^"
-                                  :max-considerable 1000}
+                                  :max-considerable 1000
+                                  :pod-condition-unschedulable-seconds 900}
                                  kubernetes-scheduler))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
@@ -752,3 +753,11 @@
   "Returns configuration for using Kubernetes Scheduler"
   []
   (-> config :settings :kubernetes-scheduler))
+
+(defn is-kubernetes-scheduler-pool?
+  "Check if a given pool uses the Kubernetes Scheduler."
+  [kubernetes-scheduler-config pool-name]
+  (let [pools-pattern (-> kubernetes-scheduler-config
+                          :pool-regex
+                          re-pattern)]
+    (not (nil? (re-find pools-pattern pool-name)))))
