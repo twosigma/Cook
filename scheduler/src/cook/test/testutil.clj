@@ -233,7 +233,7 @@
   "Return the entity id for the created dummy job."
   [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus disk group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
-                  uuid expected-runtime]
+                  uuid expected-runtime submit-pool-name]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -278,6 +278,8 @@
                         (when group {:group/_job group})
                         (when pool
                           {:job/pool (d/entid (d/db conn) [:pool/name pool])})
+                        (when submit-pool-name
+                          {:job/submit-pool-name submit-pool-name})
                         (when expected-runtime
                           {:job/expected-runtime expected-runtime}))
         job-info (if gpus

@@ -2233,7 +2233,25 @@
     (is (= 1 (count foo-jobs)))
     (is (= 1 (count bar-jobs)))
     (is (= (str (:job/uuid (d/entity (d/db conn) job-1))) (-> foo-jobs first (get "uuid"))))
-    (is (= (str (:job/uuid (d/entity (d/db conn) job-2))) (-> bar-jobs first (get "uuid"))))))
+    (is (= (str (:job/uuid (d/entity (d/db conn) job-2))) (-> bar-jobs first (get "uuid"))))
+
+    (testing "list jobs with job routing plugin"
+      (let [_ (create-pool conn "foo-1")
+            _ (create-pool conn "foo-2")
+            job-r1 (create-dummy-job conn
+                                    :user "alice"
+                                    :job-state :job.state/running
+                                    :pool "foo-1"
+                                    :submit-pool-name "foo")
+            job-r2 (create-dummy-job conn
+                                    :user "alice"
+                                    :job-state :job.state/running
+                                    :pool "foo-2"
+                                    :submit-pool-name "foo")]
+        (is (= 1 (count (list-jobs-fn "foo-1"))))
+        (is (= 1 (count (list-jobs-fn "foo-2"))))
+        ; Should be 3 to account for the previously submitted jobs
+        (is (= 3 (count (list-jobs-fn "foo"))))))))
 
 (deftest test-name-filter-str->name-filter-pattern
   (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))
