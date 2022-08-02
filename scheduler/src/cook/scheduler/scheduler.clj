@@ -2253,7 +2253,7 @@
        :instance/executor executor
        :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
        :instance/hostname "fake-hostname"
-       :instance/ports "fake-ports"
+       :instance/ports 9876
        :instance/preempted? false
        :instance/progress 0
        :instance/slave-id "fake-slave-id"
@@ -2396,11 +2396,6 @@
                           :pool-regex
                           re-pattern)]
     (not (nil? (re-find pools-pattern pool-name)))))
-
-(defn max-considerable-for-kubernetes-scheduler-pool
-  "Get max considerable value for a Kubernetes Scheduler pool."
-  [kubernetes-scheduler-pools pool-name]
-  (regexp-tools/match-based-on-pool-name kubernetes-scheduler-pools pool-name :max-considerable))
 
 (defn make-pool-handler
   "Make the configured handler for the pool to do scheduling."
