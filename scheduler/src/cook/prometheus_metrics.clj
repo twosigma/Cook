@@ -44,6 +44,7 @@
 (def scheduler-filter-offensive-jobs-duration :cook/scheduler-filter-offensive-jobs-duration-seconds)
 (def scheduler-handle-status-update-duaration :cook/scheduler-handle-status-update-duaration-seconds)
 (def scheduler-handle-framework-message-duration :cook/scheduler-handle-framework-message-duration-seconds)
+(def scheduler-jobs-launched :cook/scheduler-jobs-launched-total)
 (def scheduler-match-cycle-jobs-count :cook/scheduler-match-cycle-jobs-count)
 (def scheduler-match-cycle-matched-percent :cook/scheduler-match-cycle-matched-percent)
 (def scheduler-match-cycle-head-was-matched :cook/scheduler-match-cycle-head-was-matched)
@@ -133,6 +134,9 @@
       (prometheus/summary scheduler-handle-framework-message-duration
                           {:description "Distribution of handle framework message latency"
                            :quantiles default-summary-quantiles})
+      (prometheus/counter scheduler-jobs-launched
+                        {:description "Total count of jobs launched per pool and compute cluster"
+                         :labels [:pool :compute-cluster]})
       ;; Match cycle metrics ------------------------------------------------------------------------------------
       (prometheus/gauge scheduler-match-cycle-jobs-count
                         {:description "Aggregate match cycle job counts stats"
@@ -193,6 +197,14 @@
    `(prometheus/set registry ~name ~amount))
   ([name labels amount]
    `(prometheus/set registry ~name ~labels ~amount)))
+
+(defmacro inc
+  "Sets the value of the given metric."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/inc registry ~name))
+  ([name labels]
+   `(prometheus/inc registry ~name ~labels)))
 
 (defn export []
   "Returns the current values of all registered metrics in plain text format."
