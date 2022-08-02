@@ -2396,7 +2396,7 @@
    mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn
    kubernetes-scheduler-config]
   ;; TODO(alexh): remove after testing
-  (log-structured/info (print-str "Kubernetes scheduler config in make-pool-handler:" kubernetes-scheduler-config " " (is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
+  (log-structured/info (print-str "Kubernetes scheduler config in make-pool-handler:" kubernetes-scheduler-config " " (config/is-kubernetes-scheduler-pool? kubernetes-scheduler-config pool-name)) {:pool pool-name})
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
         using-pools? (not (nil? (config/default-pool)))
