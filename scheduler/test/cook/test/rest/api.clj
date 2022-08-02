@@ -2599,21 +2599,14 @@
                 job-uuid (-> request :body-params :jobs first :uuid)
                 {:keys [status] :as response} (handler request)]
             (is (= 201 status) (str response))
-            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))
-            (let [job (-> conn d/db (d/entity [:job/uuid job-uuid]))]
-              (do
-                (cook.pool/check-pool-and-submit-pool job :job/pool "large-job-pool" false))))
+            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))
           (let [request (-> (new-request)
                             (assoc-in [:body-params :pool] "@by-size")
                             (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 1.1)]))
                 job-uuid (-> request :body-params :jobs first :uuid)
                 {:keys [status] :as response} (handler request)]
             (is (= 201 status) (str response))
-            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))
-            (let [job (-> conn d/db (d/entity [:job/uuid job-uuid]))]
-              (do
-                (cook.pool/check-pool-and-submit-pool job :job/pool "large-job-pool" false)))
-            ))))))
+            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name)))))))))
 
 (deftest test-match-default-containers
   (let [default-containers

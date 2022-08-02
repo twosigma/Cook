@@ -402,7 +402,6 @@
           entid-end (d/entid-at db :db.part/user expanded-end)
           default-pool? (pool/default-pool? pool-name)
           pool-name' (or pool-name pool/nil-pool)
-          submit-pool ()
           job-user-entid (d/entid db :job/user)
           start-ms (.getTime start)
           end-ms (.getTime end)
