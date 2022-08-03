@@ -42,7 +42,6 @@
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
-            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
@@ -2272,8 +2271,7 @@
                                (pending-jobs->considerable-jobs
                                 db pending-jobs user->quota user->usage num-considerable pool-name)))
           job-uuids (set (map :job/uuid jobs))]
-      ;; TODO(alexh): remove/reduce logging
-      (log-structured/info (print-str "Considering jobs:" job-uuids) {:pool pool-name})
+      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count job-uuids)})
       (if (seq jobs)
         (do
           (swap! pool-name->pending-jobs-atom
@@ -2295,9 +2293,8 @@
                           task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
                           task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
                       (try
-                        ;; TODO(alexh): remove/reduce logging
-                        (log-structured/info "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
-                                             {:pool pool-name :compute-cluster compute-cluster :task-metadata-seq task-metadata-seq})
+                        (log-structured/debug "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
+                                             {:pool pool-name :compute-cluster compute-cluster})
                         (.. kill-lock-object readLock lock)
                         (timers/time!
                          (timers/timer (metric-title "kubernetes-handler-transact-task-duration" pool-name))
@@ -2310,6 +2307,7 @@
                                                  {:compute-cluster compute-cluster
                                                   :pool pool-name}
                                                  e)
+                            ;; TODO(alexh): this doesn't bubble up to the handler. It silently logs and continues.
                             (throw e))))
                         (timers/time!
                          (timers/timer (metric-title "kubernetes-handler-launch-duration" pool-name))
@@ -2327,7 +2325,7 @@
                           (.. kill-lock-object readLock unlock))))))
                  doall
                  (run! deref))
-            (log-structured/info "Launched jobs" {:pool pool-name :numer-launched-jobs (count job-uuids)})))
+            (log-structured/info "Launched jobs" {:pool pool-name :number-launched-jobs (count job-uuids)})))
         (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
     (catch Exception e
       (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
