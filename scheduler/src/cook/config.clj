@@ -121,6 +121,18 @@
   (get-ttl [_ _]
     ttl))
 
+(defrecord MetricsRateLimit [id quota ttl]
+  RateLimit
+
+  (get-key [self {:keys [authorization/user]}]
+    (str (.getName ^Class (type self)) id "-" user))
+
+  (get-quota [_ _]
+    quota)
+
+  (get-ttl [_ _]
+    ttl))
+
 (defn config-string->fitness-calculator
   "Given a string specified in the configuration, attempt to resolve it
   to and return an instance of com.netflix.fenzo.VMTaskFitnessCalculator.
@@ -267,10 +279,11 @@
                                      ((util/lazy-load-var 'cook.rest.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [auth-bypass-limit-per-m expire-minutes user-limit-per-m job-submission per-user-per-pool-job-launch]
+                   (let [{:keys [auth-bypass-limit-per-m expire-minutes user-limit-per-m user-limit-for-metrics-per-m job-submission per-user-per-pool-job-launch]
                           :or {auth-bypass-limit-per-m 600
                                expire-minutes 120
-                               user-limit-per-m 600}} rate-limit]
+                               user-limit-per-m 600
+                               user-limit-for-metrics-per-m 30}} rate-limit]
                      {:expire-minutes expire-minutes
                       :job-submission job-submission
                       :per-user-per-pool-job-launch per-user-per-pool-job-launch
@@ -278,7 +291,11 @@
                                     :user-limit
                                     user-limit-per-m
                                     auth-bypass-limit-per-m
-                                    (t/minutes 1))}))
+                                    (t/minutes 1))
+                      :user-limit-for-metrics (->MetricsRateLimit
+                                            :user-limit-for-metrics
+                                            user-limit-for-metrics-per-m
+                                            (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
                  (if (str/blank? (:command executor))
