@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.3] - 2022-08-03
+### Changed
+- Configured the /metrics endpoint to have a separate rate limit, from @samincheva
+
 ## [1.62.2] - 2022-08-02
 ### Added
 - Prometheus, from @samincheva
