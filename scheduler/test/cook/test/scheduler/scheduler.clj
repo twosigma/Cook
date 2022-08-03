@@ -2582,17 +2582,19 @@
                 "test-pool"
                 [compute-cluster-2]
                 sched/job->acceptable-compute-clusters))))))
-  (deftest test-kubernetes-pool->zip-job-metadata
+  
+  (deftest test-jobs-kubernetes-task-metadata
     (testutil/setup)
     (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
-        {compute-cluster-1-name compute-cluster-1
-         compute-cluster-2-name compute-cluster-2
-         compute-cluster-3-name compute-cluster-3})
+            {compute-cluster-1-name compute-cluster-1
+             compute-cluster-2-name compute-cluster-2
+             compute-cluster-3-name compute-cluster-3})
     (with-redefs [cc/use-cook-executor? (fn [_] false)]
-      (let [base-job {:job/checkpoint true}]
-        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
-              job2 (assoc base-job :job/uuid (UUID/randomUUID))
-              job3 (assoc base-job :job/uuid (UUID/randomUUID))
+      (let [base-job {:job/checkpoint true :job/user "wrinkle" :job/environment "env"}]
+        ;; TODO(alexh): more test cases.
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID) :job/name "job1")
+              job2 (assoc base-job :job/uuid (UUID/randomUUID) :job/name "job2")
+              job3 (assoc base-job :job/uuid (UUID/randomUUID) :job/name "job3")
               jobs [job1 job2 job3]
               compute-cluster->jobs (sched/distribute-jobs-to-compute-clusters
                                      jobs
@@ -2601,34 +2603,22 @@
                                       compute-cluster-2
                                       compute-cluster-3]
                                      sched/job->acceptable-compute-clusters)
-              jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)
-              mesos-run-as-user "user"]
-          
-          ;; TODOL count(jobs) == count(metadata)
-          ;; TODO: for each job, get metadata where (metadata :environment "COOK_JOB_UUID" == (job (str uuid)))
+              mesos-run-as-user "wrinkle"]
+          (doseq [[compute-cluster jobs] compute-cluster->jobs
+                  :let [task-metadata-seq (sched/jobs->kubernetes-task-metadata jobs "test-pool" mesos-run-as-user compute-cluster)]]
+            ;; sanity check
+            (is (= (count task-metadata-seq)
+                   (count jobs)))
 
-          ;; (println "@ALEX@")
-
-          ;; (pprint/pprint (sched/kubernetes-pool->zip-job-metadata
-          ;;                 compute-cluster->jobs
-          ;;                 jobs->task-id
-          ;;                 mesos-run-as-user
-          ;;                 "test-pool"))
-
-
-
-
-        ;; (is (= (list [job1])
-        ;;        (vals (sched/distribute-jobs-to-compute-clusters
-        ;;               [job1]
-        ;;               "test-pool"
-        ;;               [compute-cluster-1
-        ;;                compute-cluster-2
-        ;;                compute-cluster-3]
-        ;;               sched/job->acceptable-compute-clusters))))
-          ))
-      
-    )
-    
-    
-    ))
+            (doseq [[job metadata] (mapv vector jobs task-metadata-seq)
+                    :let [{:keys [job/name job/user job/uuid job/environment]} job
+                          metadata-job (get-in metadata [:task-request :job])]]
+              ;; zipped in order of jobs (expected behavior in `handle-kubernetes-scheduler-pool` for generating task-txns)
+              (is (= (metadata-job :job/uuid)
+                     uuid))
+              (is (= (metadata-job :job/name)
+                     name))
+              (is (= (metadata-job :job/user)
+                     user))
+              (is (= (metadata-job :job/environment)
+                     environment)))))))))

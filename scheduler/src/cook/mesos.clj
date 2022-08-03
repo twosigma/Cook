@@ -172,7 +172,7 @@
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    kubernetes-scheduler-config   -- map, config for using Kubernetes Scheduler
    sandbox-syncer-state          -- map, representing the sandbox syncer object
-   api-only?                     -- bool, true if this instance should not actually join the leader selection" 
+   api-only?                     -- bool, true if this instance should not actually join the leader selection"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
            mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans

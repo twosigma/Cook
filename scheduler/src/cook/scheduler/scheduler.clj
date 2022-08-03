@@ -2211,18 +2211,21 @@
      ;; NB we set any job with an instance in a non-terminal
      ;; state to running to prevent scheduling the same job
      ;; twice; see schema definition for state machine
+     ;; TODO(alexh): reconsider state machine for Kubernetes Scheduler jobs.
      [:db/add job-ref :job/state :job.state/running]
      (cond->
       {:db/id (d/tempid :db.part/user)
        :job/_instance job-ref
        :instance/executor executor
        :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
+       ;; TODO(alexh): update this once scheduled on a node.
        :instance/hostname "Unknown"
        :instance/ports 9876
        :instance/preempted? false
        :instance/progress 0
        :instance/slave-id "Unknown"
        :instance/start-time instance-start-time
+       ;; TODO(alexh): reconsider state machine for Kubernetes Scheduler jobs.
        :instance/status :instance.status/unknown
        :instance/task-id task-id
        :instance/compute-cluster (cc/db-id compute-cluster)}
@@ -2238,7 +2241,6 @@
     (for [{:keys [job/name job/user job/uuid job/environment] :as job} jobs]
       (let [pool-specific-resources
             ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
-        ;; TODO(alexh): is this everything needed to launch a real task?
         (merge
          (task/job->task-metadata compute-cluster mesos-run-as-user
                                   job (jobs->task-id job))
