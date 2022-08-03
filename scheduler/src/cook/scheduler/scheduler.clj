@@ -2287,12 +2287,12 @@
           db (db conn)
           ;; We need to filter pending jobs based on quota so that we don't
           ;; submit beyond what users have quota to actually run.
-          jobs (prometheus/with-duration
-                              prometheus/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
-                              (timers/time!
-                               (timers/timer (metric-title "kubernetes-handler-considerable-jobs-duration" pool-name))
-                               (pending-jobs->considerable-jobs
-                                db pending-jobs user->quota user->usage num-considerable pool-name)))
+          jobs (prom/with-duration
+                 prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
+                 (timers/time!
+                  (timers/timer (metric-title "kubernetes-handler-considerable-jobs-duration" pool-name))
+                  (pending-jobs->considerable-jobs
+                   db pending-jobs user->quota user->usage num-considerable pool-name)))
           job-uuids (set (map :job/uuid jobs))]
       (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count job-uuids)})
       (if (seq jobs)
@@ -2308,16 +2308,16 @@
                 compute-cluster->jobs (distribute-jobs-to-compute-clusters
                                        jobs pool-name autoscaling-compute-clusters
                                        job->acceptable-compute-clusters-fn)]
-            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name}) 
+            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name})
             (->> compute-cluster->jobs
                  (map
-                  (fn [[compute-cluster jobs]] 
+                  (fn [[compute-cluster jobs]]
                     (let [kill-lock-object (cc/kill-lock-object compute-cluster)
                           task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
                           task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
                       (try
                         (log-structured/debug "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
-                                             {:pool pool-name :compute-cluster compute-cluster})
+                                              {:pool pool-name :compute-cluster compute-cluster})
                         (.. kill-lock-object readLock lock)
                         (timers/time!
                          (timers/timer (metric-title "kubernetes-handler-transact-task-duration" pool-name))
