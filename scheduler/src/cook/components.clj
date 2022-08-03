@@ -20,16 +20,23 @@
             [compojure.core :refer [routes]]
             [compojure.route :as route]
             [congestion.middleware :refer [wrap-rate-limit]]
-            [congestion.storage :as storage] ; This explicit require is needed so that mount can see the defstate defined in the cook.caches namespace.
+            [congestion.storage :as storage]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.caches namespace.
             [cook.caches]
             [cook.compute-cluster :as cc]
             [cook.config :refer [config]]
-            [cook.datomic :as datomic] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
-            [cook.plugins.adjustment] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace.
-            [cook.plugins.completion] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.file namespace.
-            [cook.plugins.file] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
-            [cook.plugins.launch] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
-            [cook.plugins.pool] ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
+            [cook.datomic :as datomic]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.adjustment namespace.
+            [cook.plugins.adjustment]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.completion namespace. 
+            [cook.plugins.completion]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.file namespace.
+            [cook.plugins.file]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
+            [cook.plugins.launch]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
+            [cook.plugins.pool]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.submission namespace.
             [cook.plugins.submission]
             [cook.pool :as pool]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.prometheus-metrics namespace.

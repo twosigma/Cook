@@ -2343,7 +2343,8 @@
                                                           compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
                                                           token-key (quota/pool+user->token-key pool-name user)]
                                                       (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
-                                                      (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))))))
+                                                      (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
+                                                    (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})))))
                         (finally
                           (.. kill-lock-object readLock unlock))))))
                  doall
