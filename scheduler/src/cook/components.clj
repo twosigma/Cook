@@ -217,6 +217,15 @@
         (h req)
         (auth-fn req)))))
 
+(defn conditional-rate-limit
+  "Set rate limits, with support for endpoints with custom limits."
+  [h rate-limit-storage default-user-limit user-limit-for-metrics]
+  (let [metrics-rate-limit-pattern #"/metrics"]
+    (fn filtered-rate-limit [{:keys [uri] :as req}]
+      (if (re-matches metrics-rate-limit-pattern uri)
+        ((wrap-rate-limit h {:storage rate-limit-storage :limit user-limit-for-metrics}) req)
+        ((wrap-rate-limit h {:storage rate-limit-storage :limit default-user-limit}) req)))))
+
 (defn- consume-request-stream [handler]
   (fn [{:keys [body] :as request}]
     (let [resp (handler request)]
@@ -248,37 +257,37 @@
     {:route full-routes
      :http-server (fnk [[:settings cors-origins server-port authorization-middleware impersonation-middleware
                          leader-reports-unhealthy server-https-port server-keystore-path server-keystore-type
-                         server-keystore-pass [:rate-limit user-limit]]
+                         server-keystore-pass [:rate-limit user-limit user-limit-for-metrics]]
                         [:route view] leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((util/lazy-load-var 'qbits.jet.server/run-jetty)
-                                  (cond-> {:ring-handler (routes
-                                                           (route/resources "/resource")
-                                                           (-> view
-                                                               (wrap-rate-limit {:storage rate-limit-storage
-                                                                                 :limit user-limit})
-                                                               tell-jetty-about-usename
-                                                               impersonation-middleware
-                                                               (conditional-auth-bypass authorization-middleware)
-                                                               wrap-exception-logging
-                                                               wrap-stacktrace
-                                                               wrap-no-cache
-                                                               wrap-cookies
-                                                               wrap-params
-                                                               (cors/cors-middleware cors-origins)
-                                                               (health-check-middleware leadership-atom leader-reports-unhealthy)
-                                                               instrument
-                                                               consume-request-stream))
-                                           :join? false
-                                           :configurator configure-jet-logging
-                                           :max-threads 200
-                                           :request-header-size 32768}
-                                    server-port (assoc :port server-port)
-                                    server-https-port (assoc :ssl-port server-https-port)
-                                    server-keystore-pass (assoc :key-password server-keystore-pass)
-                                    server-keystore-path (assoc :keystore server-keystore-path)
-                                    server-keystore-type (assoc :keystore-type server-keystore-type)))]
+                                 (cond-> {:ring-handler (routes
+                                                          (route/resources "/resource")
+                                                          (-> view
+                                                            (conditional-rate-limit rate-limit-storage user-limit
+                                                                                    user-limit-for-metrics)
+                                                            tell-jetty-about-usename
+                                                            impersonation-middleware
+                                                            (conditional-auth-bypass authorization-middleware)
+                                                            wrap-exception-logging
+                                                            wrap-stacktrace
+                                                            wrap-no-cache
+                                                            wrap-cookies
+                                                            wrap-params
+                                                            (cors/cors-middleware cors-origins)
+                                                            (health-check-middleware leadership-atom leader-reports-unhealthy)
+                                                            instrument
+                                                            consume-request-stream))
+                                          :join? false
+                                          :configurator configure-jet-logging
+                                          :max-threads 200
+                                          :request-header-size 32768}
+                                   server-port (assoc :port server-port)
+                                   server-https-port (assoc :ssl-port server-https-port)
+                                   server-keystore-pass (assoc :key-password server-keystore-pass)
+                                   server-keystore-path (assoc :keystore server-keystore-path)
+                                   server-keystore-type (assoc :keystore-type server-keystore-type)))]
                       (fn [] (.stop jetty))))
      :compute-clusters (fnk [exit-code-syncer-state
                              mesos-agent-query-cache
@@ -315,17 +324,17 @@
      :mesos mesos-scheduler
      :mesos-agent-query-cache (fnk [[:settings [:agent-query-cache max-size ttl-ms]]]
                                 (-> {}
-                                    (cache/lru-cache-factory :threshold max-size)
-                                    (cache/ttl-cache-factory :ttl ttl-ms)
-                                    atom))
+                                  (cache/lru-cache-factory :threshold max-size)
+                                  (cache/ttl-cache-factory :ttl ttl-ms)
+                                  atom))
      :exit-code-syncer-state (fnk [[:settings [:exit-code-syncer publish-batch-size publish-interval-ms]]]
                                ((util/lazy-load-var 'cook.mesos.sandbox/prepare-exit-code-publisher)
-                                 datomic/conn publish-batch-size publish-interval-ms))
+                                datomic/conn publish-batch-size publish-interval-ms))
      :trigger-chans (fnk [[:settings rebalancer progress optimizer task-constraints]]
                       ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints))
      :clear-uncommitted-canceler (fnk [leadership-atom]
                                    ((util/lazy-load-var 'cook.tools/clear-uncommitted-jobs-on-schedule)
-                                     datomic/conn leadership-atom))
+                                    datomic/conn leadership-atom))
      :leadership-atom (fnk [] (atom false))
      :pool-name->pending-jobs-atom (fnk [] (atom {}))
      :curator-framework curator-framework}))
