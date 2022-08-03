@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.2] - 2022-08-02
+### Added
+- Prometheus, from @samincheva
+- Adding match cycle metrics to prometheus, from @samincheva
+- Adding prometheus metric for jobs launch count, from @samincheva
+
+### Fixed
+- Use pools & submit pools in /jobs list endpoint, from @laurameng
+
 ## [1.62.1] - 2022-07-27
 ### Added
 - Add support for pool quotas across pools, from @scrosby
