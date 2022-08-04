@@ -1816,7 +1816,7 @@
   (let [{:keys [pod-condition-unschedulable-seconds
                 synthetic-pod-condition-unschedulable-seconds]}
         (config/kubernetes)
-        {:keys [kubernetes-scheduler-pod-condition-unschedulable-seconds]}
+        {kubernetes-scheduler-pod-condition-unschedulable-seconds :pod-condition-unschedulable-seconds}
         (config/kubernetes-scheduler)
         unschedulable-seconds
         (if (some-> pod-name synthetic-pod?)
