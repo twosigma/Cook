@@ -39,6 +39,7 @@
             [cook.mesos.reason :as reason]
             [cook.passport :as passport]
             [cook.plugins.adjustment :as adjustment]
+            [cook.plugins.job-expander :as job-expander-plugin]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
@@ -2222,9 +2223,10 @@
                          (let [groups (mapv #(validate-and-munge-group db %) groups)
                                job-pool-name-maps
                                (mapv
-                                 (fn [job]
-                                   (let [effective-pool-name
-                                         (pool-name->effective-pool-name pool-name job)
+                                 (fn [raw-job]
+                                   (let [effective-job (job-expander-plugin/apply-job-expander-plugins raw-job)
+                                         effective-pool-name
+                                         (pool-name->effective-pool-name pool-name raw-job)
                                          validated-and-munged-job
                                          (validate-and-munge-job
                                            db
@@ -2233,7 +2235,7 @@
                                            task-constraints
                                            gpu-enabled?
                                            (set (map :uuid groups))
-                                           job
+                                           effective-job
                                            :override-group-immutability?
                                            override-group-immutability?)]
                                      {:job validated-and-munged-job
