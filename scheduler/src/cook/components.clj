@@ -33,6 +33,8 @@
             [cook.plugins.completion]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.file namespace.
             [cook.plugins.file]
+            ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.job-expander namespace.
+            [cook.plugins.job-expander]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.launch namespace.
             [cook.plugins.launch]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.plugins.pool namespace.
