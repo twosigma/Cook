@@ -1176,7 +1176,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn fenzo-state pending-jobs pool-name->pending-jobs-atom mesos-run-as-user
+  [conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
    job->acceptable-compute-clusters-fn]
   (log-structured/debug "Invoked handle-resource-offers!" {:pool pool-name})
@@ -1191,6 +1191,7 @@
           (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
           (try
             (let [db (db conn)
+                  pending-jobs (get @pool-name->pending-jobs-atom pool-name)
                   considerable-jobs (prom/with-duration
                                       prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
                                       (timers/time!
@@ -2139,10 +2140,10 @@
 
 (defn handle-fenzo-pool
   "Handle scheduling pending jobs using the Fenzo Scheduler."
-  [conn fenzo fenzo-state resources-atom pending-jobs pool-name->pending-jobs-atom agent-attributes-cache max-considerable
+  [conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache max-considerable
    scaleback floor-iterations-before-warn floor-iterations-before-reset rebalancer-reservation-atom
    mesos-run-as-user pool-name compute-clusters job->acceptable-compute-clusters-fn
-   user->quota user->usage-future] 
+   user->quota user->usage-future]
   (log-structured/info "Creating handler for Fenzo pool" {:pool pool-name})
   (let [num-considerable @fenzo-num-considerable-atom
         next-considerable
@@ -2174,7 +2175,7 @@
                 user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
                                                    :tags {:pool pool-name :component tracing-component-tag}}]
                               @user->usage-future)
-                matched-head? (handle-resource-offers! conn fenzo-state pending-jobs pool-name->pending-jobs-atom
+                matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
                                                        mesos-run-as-user user->usage user->quota
                                                        num-considerable offers
                                                        rebalancer-reservation-atom pool-name compute-clusters
@@ -2276,7 +2277,7 @@
 
 (defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs using the Kubernetes Scheduler."
-  [conn pending-jobs pool-name->pending-jobs-atom
+  [conn pool-name->pending-jobs-atom
    pool-name compute-clusters job->acceptable-compute-clusters-fn
    user->quota user->usage-future num-considerable mesos-run-as-user]
   (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
@@ -2285,6 +2286,7 @@
                                              :tags {:pool pool-name :component tracing-component-tag}}]
                         @user->usage-future)
           db (db conn)
+          pending-jobs (get @pool-name->pending-jobs-atom pool-name)
           ;; We need to filter pending jobs based on quota so that we don't
           ;; submit beyond what users have quota to actually run.
           jobs (prom/with-duration
@@ -2372,16 +2374,14 @@
        (try
          (let [user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom) 
-               user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
-               pending-jobs (get @pool-name->pending-jobs-atom pool-name)]
+               user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))]
            (if kubernetes-scheduler-pool?
-            (handle-kubernetes-scheduler-pool conn pending-jobs pool-name->pending-jobs-atom
+            (handle-kubernetes-scheduler-pool conn pool-name->pending-jobs-atom
                                               pool-name compute-clusters job->acceptable-compute-clusters-fn
                                               user->quota user->usage-future
                                               (kubernetes-scheduler-config :max-considerable)
                                               mesos-run-as-user)
-             (handle-fenzo-pool conn fenzo fenzo-state resources-atom
-                                pending-jobs pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
+             (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                                 scaleback floor-iterations-before-warn floor-iterations-before-reset
                                 rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
                                 job->acceptable-compute-clusters-fn user->quota user->usage-future)))
