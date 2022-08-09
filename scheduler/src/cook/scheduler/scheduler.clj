@@ -1123,9 +1123,10 @@
           (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "considerable"} 0)
           (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "unmatched"} 0)
           (prom/set prom/scheduler-match-cycle-jobs-count {:pool pool-name :status "max-considerable"} 0)
-          (prom/set prom/scheduler-match-cycle-matched-percent {:pool pool-name} 0)
-          (prom/set prom/scheduler-match-cycle-all-matched {:pool pool-name} 0)
-          (prom/set prom/scheduler-match-cycle-head-was-matched {:pool pool-name} 0)
+          ; Even though we didn't match anything, set the following values to 1 to make visualizations make sense
+          (prom/set prom/scheduler-match-cycle-matched-percent {:pool pool-name} 1.0)
+          (prom/set prom/scheduler-match-cycle-all-matched {:pool pool-name} 1)
+          (prom/set prom/scheduler-match-cycle-head-was-matched {:pool pool-name} 1)
           (prom/set prom/scheduler-match-cycle-queue-was-full {:pool pool-name} 0))
       ; nonzero considerables case
       (do
