@@ -2266,7 +2266,20 @@
         (merge
          (task/job->task-metadata compute-cluster mesos-run-as-user
                                   job (jobs->task-id job))
-         {:task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+         {; NB: see `kubernetes/compute_cluster/autoscale!`
+          ; for how launching a real job pod without a hostname
+          ; compares to launching a synthetic pod.
+
+          ; Job constraints need to be expressed on a real job
+          ; pod so that if it triggers the cluster autoscaler,
+          ; CA will spin up nodes that will end up satisfying it. 
+          :pod-constraints (constraints/job->constraints job)
+
+          ; Cook has a "novel host constraint", which disallows a job from
+          ; running on the same host twice. So, we need to avoid running a
+          ; real job pod on any of the hosts that it won't be able to run on.
+          :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
+          :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
                          :job {:job/pool {:pool/name pool-name}
                                :job/environment environment
                                :job/name name
