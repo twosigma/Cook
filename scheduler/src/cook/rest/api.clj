@@ -39,7 +39,7 @@
             [cook.mesos.reason :as reason]
             [cook.passport :as passport]
             [cook.plugins.adjustment :as adjustment]
-            [cook.plugins.job-expander :as job-expander-plugin]
+            [cook.plugins.job-submission-modifier :as job-submission-plugin]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
@@ -2224,7 +2224,8 @@
                                job-pool-name-maps
                                (mapv
                                  (fn [raw-job]
-                                   (let [effective-job (job-expander-plugin/apply-job-expander-plugins raw-job)
+                                   (let [effective-job
+                                         (job-submission-plugin/apply-job-submission-modifier-plugins raw-job)
                                          effective-pool-name
                                          (pool-name->effective-pool-name pool-name raw-job)
                                          validated-and-munged-job

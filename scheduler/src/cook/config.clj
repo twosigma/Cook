@@ -480,7 +480,7 @@
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
      :plugins (fnk [[:config {plugins {}}]]
-                (let [{:keys [job-launch-filter job-routing job-submission-validator pool-selection job-expander]} plugins]
+                (let [{:keys [job-launch-filter job-routing job-submission-validator pool-selection job-submission-modifier]} plugins]
                   (merge plugins
                          {:job-launch-filter
                           (merge
@@ -511,8 +511,8 @@
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
                                  pool-selection)
-                          :job-expander
-                          job-expander})))
+                          :job-submission-modifier
+                          job-submission-modifier})))
      :quota-grouping (fnk [[:config {quota-grouping {}}]]
                        quota-grouping)
      :pg-config (fnk [[:config {pg-config nil}]]

@@ -63,8 +63,7 @@
     ; Note that job may have a nil pool. But Cook will route based on the default pool
     "Given a job submission, returns the initial pool selection for the job"))
 
-(defprotocol JobExpander
-  (expand-job [this job]
-    ; Note that each job in a multi-job submission request will be acted on separately
-    "Given an api job submission, returns an expanded job definition for downstream use.
-     JobExpander may raise exception if it cannot return a valid job definition."))
+(defprotocol JobSubmissionModifier
+  (modify-job [this job]
+    "Given a job submission, returns a modified job definition for downstream use.
+     JobSubmissionModifier may raise an exception if it cannot return a valid job definition."))
