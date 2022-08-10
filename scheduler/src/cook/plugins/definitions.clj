@@ -65,4 +65,6 @@
 
 (defprotocol JobExpander
   (expand-job [this job]
-    "Given a api job submission, returns an expanded job definition for downstream use"))
+    ; Note that each job in a multi-job submission request will be acted on separately
+    "Given an api job submission, returns an expanded job definition for downstream use.
+     JobExpander may raise exception if it cannot return a valid job definition."))

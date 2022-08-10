@@ -21,14 +21,14 @@
             [cook.plugins.util]
             [mount.core :as mount]))
 
-(defrecord SimpleJobExpander []
+(defrecord IdentityJobExpander []
   JobExpander
-  ;The SimpleJobExpander doesn't make any changes to what users submit
+  ;The IdentityJobExpander doesn't make any changes to what users submit
   (expand-job [this job]
     job))
 
 (defn create-plugin-object
-  "Returns the configured JobExpander, or a SimpleJobExpander if none is defined."
+  "Returns the configured JobExpander, or a IdentityJobExpander if none is defined."
   [config]
   (let [factory-fn (get-in config [:settings :plugins :job-expander :factory-fn])]
     (if factory-fn
@@ -37,12 +37,12 @@
         (if-let [resolved-fn (cook.plugins.util/resolve-symbol (symbol factory-fn))]
           (resolved-fn config)
           (throw (ex-info (str "Unable to resolve factory fn " factory-fn) {}))))
-      (SimpleJobExpander.))))
+      (IdentityJobExpander.))))
 
 (mount/defstate plugin
                 :start (create-plugin-object config/config))
 
 (defn apply-job-expander-plugins
-  "Apply any modifications to user-submitted raw job"
+  "Modify a user-submitted job before passing it further down the submission pipeline."
   [raw-job]
   (expand-job plugin raw-job))
