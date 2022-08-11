@@ -17,6 +17,7 @@
             [cook.log-structured :as log-structured]
             [cook.monitor :as monitor]
             [cook.pool]
+            [cook.prometheus-metrics :as prom]
             [cook.scheduler.constraints :as constraints]
             [cook.tools :as tools]
             [cook.util :as util]
@@ -514,6 +515,8 @@
 
             (set-counter-fn "total-synthetic-pods" num-synthetic-pods)
             (set-counter-fn "max-total-synthetic-pods" max-pods-outstanding)
+            (prom/set prom/total-synthetic-pods {:pool pool-name :compute-cluster name} num-synthetic-pods)
+            (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding)
 
             (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
                                       (- max-total-nodes total-nodes)
