@@ -406,6 +406,14 @@
                           nil))]
       (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))))
 
+(defn record-hostname
+  "Record the pod's hostname in Datomic."
+  [pod-name {:keys [^V1Pod pod]}]
+  (when-not (api/kubernetes-scheduler-pod? pod-name)
+    (let [task-id (-> pod .getMetadata .getName)
+          hostname (api/pod->node-name pod)]
+      (when hostname (scheduler/write-hostname-to-datomic datomic/conn task-id hostname)))))
+
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
   [compute-cluster pod-name]
@@ -693,6 +701,10 @@
            old-file-server-state (:sandbox-file-server-container-state old-state)]
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
          (record-sandbox-url pod-name new-state)))
+     ; Hostname will change for pods scheduled by Kubernetes.
+     (when-not (= (api/pod->node-name (:pod new-state))
+                  (api/pod->node-name (:pod old-state)))
+       (record-hostname pod-name new-state))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
        (when-not force-process?

@@ -333,6 +333,26 @@
     (catch Exception e
       (log/error e "Sandbox file server URL update error"))))
 
+(defn write-hostname-to-datomic
+  "Takes a hostname for an instance and saves it to datomic."
+  [conn task-id hostname]
+  (try
+    (let [db (db conn)
+          _ (when-not task-id
+              (throw (ex-info "task-id is nil. Something unexpected has happened."
+                              {:hostname hostname
+                               :task-id task-id})))
+          [instance] (first (q '[:find ?i
+                                 :in $ ?task-id
+                                 :where
+                                 [?i :instance/task-id ?task-id]]
+                               db task-id))]
+      (if (nil? instance)
+        (log/error "Hostname update error. No instance for task-id" task-id)
+        @(d/transact conn [[:db/add instance :instance/hostname hostname]])))
+    (catch Exception e
+      (log/error e "Hostname update error"))))
+
 (defn- task-id->instance-id
   "Retrieves the instance-id given a task-id"
   [db task-id]
