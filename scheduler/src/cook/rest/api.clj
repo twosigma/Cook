@@ -2113,18 +2113,6 @@
       (user-queue-length-within-limit? ctx)
       no-job-exceeds-quota-result)))
 
-(defn job-routing-pool-name?
-  "Returns truthy if the given pool name is a job-routing pool name"
-  [pool-name-from-submission]
-  (get (config/job-routing) pool-name-from-submission))
-
-(defn pool-name->effective-pool-name
-  "Given a pool name and job from a submission returns the effective pool name"
-  [pool-name-from-submission job]
-  (if-let [job-router (job-routing-pool-name? pool-name-from-submission)]
-    (plugins/choose-pool-for-job job-router job)
-    (or pool-name-from-submission (config/default-pool))))
-
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -2188,7 +2176,7 @@
                          :let [db (db conn)
                                skip-pool-name-checks?
                                (or (not pool-name)
-                                   (job-routing-pool-name? pool-name))
+                                   (config/job-routing-pool-name? pool-name))
                                pool-exists?
                                (or skip-pool-name-checks?
                                    ; Values cached in pool-name->exists?-cache
@@ -2225,9 +2213,8 @@
                                (mapv
                                  (fn [raw-job]
                                    (let [effective-job
-                                         (job-submission-plugin/apply-job-submission-modifier-plugins raw-job)
-                                         effective-pool-name
-                                         (pool-name->effective-pool-name pool-name raw-job)
+                                         (job-submission-plugin/apply-job-submission-modifier-plugins raw-job pool-name)
+                                         effective-pool-name (get effective-job :pool)
                                          validated-and-munged-job
                                          (validate-and-munge-job
                                            db

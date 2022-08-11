@@ -64,6 +64,6 @@
     "Given a job submission, returns the initial pool selection for the job"))
 
 (defprotocol JobSubmissionModifier
-  (modify-job [this job]
-    "Given a job submission, returns a modified job definition for downstream use.
+  (modify-job [this job pool-name]
+    "Given a job submission and pool-name, returns a modified job definition with pool selection for downstream use.
      JobSubmissionModifier may raise an exception if it cannot return a valid job definition."))

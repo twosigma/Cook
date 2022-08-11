@@ -753,6 +753,11 @@
   []
   (-> config :settings :plugins :job-routing))
 
+(defn job-routing-pool-name?
+  "Returns truthy if the given pool name is a job-routing pool name"
+  [pool-name-from-submission]
+  (get (job-routing) pool-name-from-submission))
+
 (defn constraint-attribute->transformation
   []
   (-> config :settings :constraint-attribute->transformation))
