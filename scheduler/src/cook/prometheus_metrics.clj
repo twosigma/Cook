@@ -60,6 +60,8 @@
    :gpus :cook/scheduler-users-gpu-count
    :launch-rate-saved :cook/scheduler-users-launch-rate-saved
    :launch-rate-per-minute :cook/scheduler-users-launch-rate-per-minute})
+(def total-synthetic-pods :cook/scheduler-kubernetes-synthetic-pods-count)
+(def max-synthetic-pods :cook/scheduler-kubernethes-max-synthetic-pods)
 
 
 (defn create-registry
@@ -177,7 +179,16 @@
       ;; Metrics for user resource allocation counts
       (prometheus/gauge user-state-count
                         {:description "Current user count by state"
-                         :labels [:pool :state]}))))
+                         :labels [:pool :state]})
+      ;; Resource usage stats -----------------------------------------------------------------------------------
+
+      ;; Other metrics -------------------------------------------------------------------------------------------
+      (prometheus/gauge total-synthetic-pods
+                        {:description "Total current number of synthetic pods per pool and compute cluster"
+                         :labels [:pool :compute-cluster]})
+      (prometheus/gauge max-synthetic-pods
+                        {:description "Max number of synthetic pods per pool and compute cluster"
+                         :labels [:pool :compute-cluster]}))))
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
