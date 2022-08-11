@@ -61,9 +61,11 @@
 (defprotocol JobRouter
   (choose-pool-for-job [this job]
     ; Note that job may have a nil pool. But Cook will route based on the default pool
-    "Given a job submission, returns the initial pool selection for the job"))
+    "Given a job submission, returns the initial pool selection for the job.
+    JobRouter is expected to be called from within JobSubmissionModifier."))
 
 (defprotocol JobSubmissionModifier
   (modify-job [this job pool-name]
     "Given a job submission and pool-name, returns a modified job definition with pool selection for downstream use.
-     JobSubmissionModifier may raise an exception if it cannot return a valid job definition."))
+     JobSubmissionModifier may raise an exception if it cannot return a valid job definition.
+     An exception will cause the job submission to fail with the error message being included in the response."))

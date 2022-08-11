@@ -27,8 +27,9 @@
             [cook.config :as config]
             [cook.config-incremental :as config-incremental]
             [cook.mesos.reason :as reason]
-            [cook.plugins.definitions :refer [FileUrlGenerator JobRouter]]
+            [cook.plugins.definitions :refer [FileUrlGenerator JobRouter JobSubmissionModifier]]
             [cook.plugins.file :as file-plugin]
+            [cook.plugins.job-submission-modifier :as job-mod]
             [cook.plugins.submission :as submission-plugin]
             [cook.test.postgres]
             [cook.quota :as quota]
@@ -2423,6 +2424,16 @@
         "small-job-pool"
         "large-job-pool"))))
 
+(defn make-identity-job-modifier
+  [_]
+  (job-mod/->IdentityJobSubmissionModifier))
+
+(defn make-failing-job-modifier
+  [_]
+  (reify JobSubmissionModifier
+    (modify-job [_ _ _]
+      (throw (IllegalArgumentException. "Always fail")))))
+
 (deftest test-create-jobs-handler
   (testutil/setup)
   (let [conn (restore-fresh-database! "datomic:mem://test-create-jobs-handler")
@@ -2604,6 +2615,53 @@
           (let [request (-> (new-request)
                             (assoc-in [:body-params :pool] "@by-size")
                             (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 1.1)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "large-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))))
+
+      (testing "job submission modifier plugin smoke test success"
+        (testutil/setup :config
+                        {:plugins {:job-submission-modifier
+                                   {:factory-fn 'cook.test.rest.api/make-identity-job-modifier}}})
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
+          (let [request (-> (new-request)
+                          (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 0.9)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "no-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))))
+
+      (testing "job submission modifier plugin smoke test exception"
+        (testutil/setup :config
+                        {:plugins {:job-submission-modifier
+                                   {:factory-fn 'cook.test.rest.api/make-failing-job-modifier}}})
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
+          (let [request (-> (new-request)
+                          (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 0.9)]))
+                {:keys [status body] :as response} (handler request)]
+            (is (= 400 status) (str response))
+            (is (= "Always fail" (get body :error)) "Exception message mismatch"))))
+
+      (testing "job submission modifier plugin with custom JobRouter"
+        (create-pool conn "small-job-pool")
+        (create-pool conn "large-job-pool")
+        (testutil/setup :config
+                        {:plugins {:job-routing
+                                   {"@by-size" 'cook.test.rest.api/make-by-size-job-router}
+                                   :job-submission-modifier
+                                   {:factory-fn 'cook.test.rest.api/make-identity-job-modifier}}})
+        (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)]
+          (let [request (-> (new-request)
+                          (assoc-in [:body-params :pool] "@by-size")
+                          (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 0.9)]))
+                job-uuid (-> request :body-params :jobs first :uuid)
+                {:keys [status] :as response} (handler request)]
+            (is (= 201 status) (str response))
+            (is (= "small-job-pool" (-> conn d/db (d/entity [:job/uuid job-uuid]) cached-queries/job->pool-name))))
+          (let [request (-> (new-request)
+                          (assoc-in [:body-params :pool] "@by-size")
+                          (assoc-in [:body-params :jobs] [(assoc (minimal-job) :cpus 1.1)]))
                 job-uuid (-> request :body-params :jobs first :uuid)
                 {:keys [status] :as response} (handler request)]
             (is (= 201 status) (str response))
