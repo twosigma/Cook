@@ -2234,7 +2234,7 @@
      ;; state to running to prevent scheduling the same job
      ;; twice; see schema definition for state machine
      ;; TODO(alexh): reconsider state machine for Kubernetes Scheduler jobs.
-     [:db/add job-ref :job/state :job.state/running]
+     [:db/add job-ref :job/state :job.state/waiting]
      (cond->
       {:db/id (d/tempid :db.part/user)
        :job/_instance job-ref
