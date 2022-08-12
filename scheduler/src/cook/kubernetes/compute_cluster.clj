@@ -167,6 +167,7 @@
                    :executor-ids []
                    :compute-cluster compute-cluster
                    :reject-after-match-attempt true
+                   ; TODO: add a timer here when we add it to mesos as well
                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))))))
 
 (defn taskids-to-scan
@@ -301,6 +302,7 @@
   launches the task by pumping it into the k8s state machine"
   [{:keys [name namespace-config] :as compute-cluster} task-metadata]
   (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
+        prom-stop-fn (prom/start-timer prom/launch-task-duration {:compute-cluster compute-cluster})
         pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
         pod-name (:task-id task-metadata)
         ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
@@ -316,6 +318,7 @@
     (try
       (controller/update-cook-expected-state compute-cluster pod-name new-cook-expected-state-dict)
       (.stop timer-context)
+      (prom-stop-fn)
       (catch Exception e
         (log-structured/error "Encountered exception launching task"
                               {:pod-name pod-name
@@ -384,9 +387,11 @@
                               {:compute-cluster name :task-id task-id})
         ; Note we can't use timer/time! because it wraps the body in a Callable, which rebinds 'this' to another 'this'
         ; causing breakage.
-        (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))]
+        (let [timer-context (timers/start (metrics/timer "cc-kill-tasks" name))
+              prom-stop-fn (prom/start-timer prom/kill-task-duration {:compute-cluster name})]
           (controller/update-cook-expected-state this task-id {:cook-expected-state :cook-expected-state/killed})
-          (.stop timer-context)))))
+          (.stop timer-context)
+          (prom-stop-fn)))))
 
   (decline-offers [this offer-ids]
     (log/debug "Rejecting offer ids" offer-ids))
@@ -446,6 +451,7 @@
               (do
                 (log-structured/info "Looking for offers for pool" {:compute-cluster name :pool pool-name})
                 (let [timer (timers/start (metrics/timer "cc-pending-offers-compute" name))
+                      prom-stop-fn (prom/start-timer prom/compute-pending-offers-duration {:compute-cluster name})
                       pods (add-starting-pods this @all-pods-atom)
                       nodes @current-nodes-atom
                       offers-this-pool (generate-offers this (or node-name->node {})
@@ -466,6 +472,7 @@
                                         :number-total-pods-in-compute-cluster (count pods)
                                         :first-ten-offers-this-pool (print-str offers-this-pool-for-logging)})
                   (timers/stop timer)
+                  (prom-stop-fn)
                   offers-this-pool))))))))
 
   (restore-offers [this pool-name offers])
@@ -484,6 +491,7 @@
           (assert (cc/autoscaling? this pool-name)
                   (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
           (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
+                prom-stop-fn (prom/start-timer prom/autoscale-duration {:compute-cluster name})
                 outstanding-synthetic-pods (->> (get-pods-in-pool this pool-name)
                                                 (add-starting-pods this)
                                                 (filter synthetic-pod->job-uuid))
@@ -590,18 +598,22 @@
                                                     ; Need to pass in resources to task-metadata->pod for gpu count
                                                     :resources pool-specific-resources}}))))
                       num-synthetic-pods-to-launch (count task-metadata-seq)]
+                  (prom/set prom/synthetic-pods-submitted {:compute-cluster name} num-synthetic-pods-to-launch)
                   (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
                   (log-structured/info "Launching synthetic pod(s) in pool"
                                        {:compute-cluster name
                                         :pool synthetic-task-pool-name
                                         :number-synthetic-pods-to-launch num-synthetic-pods-to-launch})
-                  (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))]
+                  (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))
+                        prom-stop-fn (prom/start-timer prom/launch-synthetic-tasks-duration {:compute-cluster name})]
                     (cc/launch-tasks this
                                      synthetic-task-pool-name
                                      [{:task-metadata-seq task-metadata-seq}]
                                      (fn [_]))
-                    (.stop timer-context-launch-tasks)))))
-            (.stop timer-context-autoscale))
+                    (.stop timer-context-launch-tasks)
+                    (prom-stop-fn)))))
+            (.stop timer-context-autoscale)
+            (prom-stop-fn))
           (catch Throwable e
             (log-structured/error "Encountered error launching synthetic pod(s)" {:compute-cluster name :pool pool-name} e))))))
 

@@ -65,9 +65,10 @@
 (def max-pods :cook/scheduler-kubernetes-max-pods)
 (def total-synthetic-pods :cook/scheduler-kubernetes-synthetic-pods-count)
 (def max-synthetic-pods :cook/scheduler-kubernethes-max-synthetic-pods)
+(def synthetic-pods-submitted :cook/scheduler-kubernetes-synthetic-pods-submitted-count)
 (def total-nodes :cook/scheduler-kubernetes-nodes-count)
 (def max-nodes :cook/scheduler-kubernetes-max-nodes)
-(def watch-gap :cook/scheduler-kubenretes-watch-gap-millis)
+(def watch-gap :cook/scheduler-kubernetes-watch-gap-millis)
 (def disconnected-watch-gap :cook/scheduler-kubernetes-disconnected-watch-gap-millis)
 (def delete-pod-errors :cook/scheduler-kubernetes-delete-pod-errors-count)
 (def delete-finalizer-errors :cook/scheduler-kubernetes-delete-finalizer-expected-errors-count)
@@ -78,6 +79,11 @@
 (def delete-pod-duration :cook/scheduler-kubernetes-delete-pod-duration-seconds)
 (def delete-finalizer-duration :cook/scheduler-kubernetes-delete-finalizer-duration-seconds)
 (def launch-pod-duration :cook/scheduler-kubernetes-launch-pod-duration-seconds)
+(def launch-task-duration :cook/scheduler-kubernetes-launch-task-duration-seconds)
+(def kill-task-duration :cook/scheduler-kubernetes-kill-task-duration-seconds)
+(def compute-pending-offers-duration :cook/scheduler-kubernetes-compute-pending-offers-duration-seconds)
+(def autoscale-duration :cook/scheduler-kubernetes-autoscale-duration-seconds)
+(def launch-synthetic-tasks-duration :cook/scheduler-kubernetes-launch-synthetic-tasks-duration-seconds)
 
 (defn create-registry
   []
@@ -208,6 +214,9 @@
       (prometheus/gauge max-synthetic-pods
                         {:description "Max number of synthetic pods per pool and compute cluster"
                          :labels [:pool :compute-cluster]})
+      (prometheus/gauge synthetic-pods-submitted
+                        {:description "Count of synthetic pods submitted in the last match cycle"
+                         :labels [:compute-cluster]})
       (prometheus/gauge total-nodes
                         {:description "Total current number of nodes per compute cluster"
                          :labels [:pool]})
@@ -254,6 +263,26 @@
       (prometheus/summary launch-pod-duration
                           {:description "Latency distribution of launching a pod"
                            :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary launch-task-duration
+                          {:description "Latency distribution of launching a task (more inclusive than launch-pod)"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary kill-task-duration
+                          {:description "Latency distribution of killing a task (more inclusive than delete-pod)"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary compute-pending-offers-duration
+                          {:description "Latency distribution of computing pending offers"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary autoscale-duration
+                          {:description "Latency distribution of autoscaling"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary launch-synthetic-tasks-duration
+                          {:description "Latency distribution of launching synthetic tasks"
+                           :labels [:compute-cluster]
                            :quantiles default-summary-quantiles}))))
 
 ;; A global registry for all metrics reported by Cook.
@@ -268,6 +297,15 @@
   {:arglists '([name labels & body])}
   [name labels & body]
   `(prometheus/with-duration (registry ~name ~labels) ~@body))
+
+(defmacro start-timer
+  "Starts a timer that, when stopped, will store the duration in the given metric.
+  The return value will be a function that should be called once the operation to time has run."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/start-timer registry ~name))
+  ([name labels]
+   `(prometheus/start-timer registry ~name ~labels)))
 
 (defmacro set
   "Sets the value of the given metric."
