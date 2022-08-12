@@ -39,6 +39,7 @@
             [cook.mesos.reason :as reason]
             [cook.passport :as passport]
             [cook.plugins.adjustment :as adjustment]
+            [cook.plugins.job-submission-modifier :as job-submission-plugin]
             [cook.plugins.definitions :as plugins]
             [cook.plugins.file :as file-plugin]
             [cook.plugins.submission :as submission-plugin]
@@ -2112,18 +2113,6 @@
       (user-queue-length-within-limit? ctx)
       no-job-exceeds-quota-result)))
 
-(defn job-routing-pool-name?
-  "Returns truthy if the given pool name is a job-routing pool name"
-  [pool-name-from-submission]
-  (get (config/job-routing) pool-name-from-submission))
-
-(defn pool-name->effective-pool-name
-  "Given a pool name and job from a submission returns the effective pool name"
-  [pool-name-from-submission job]
-  (if-let [job-router (job-routing-pool-name? pool-name-from-submission)]
-    (plugins/choose-pool-for-job job-router job)
-    (or pool-name-from-submission (config/default-pool))))
-
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -2187,7 +2176,7 @@
                          :let [db (db conn)
                                skip-pool-name-checks?
                                (or (not pool-name)
-                                   (job-routing-pool-name? pool-name))
+                                   (config/job-routing-pool-name? pool-name))
                                pool-exists?
                                (or skip-pool-name-checks?
                                    ; Values cached in pool-name->exists?-cache
@@ -2222,9 +2211,10 @@
                          (let [groups (mapv #(validate-and-munge-group db %) groups)
                                job-pool-name-maps
                                (mapv
-                                 (fn [job]
-                                   (let [effective-pool-name
-                                         (pool-name->effective-pool-name pool-name job)
+                                 (fn [raw-job]
+                                   (let [effective-job
+                                         (job-submission-plugin/apply-job-submission-modifier-plugins raw-job pool-name)
+                                         effective-pool-name (get effective-job :pool)
                                          validated-and-munged-job
                                          (validate-and-munge-job
                                            db
@@ -2233,7 +2223,7 @@
                                            task-constraints
                                            gpu-enabled?
                                            (set (map :uuid groups))
-                                           job
+                                           effective-job
                                            :override-group-immutability?
                                            override-group-immutability?)]
                                      {:job validated-and-munged-job

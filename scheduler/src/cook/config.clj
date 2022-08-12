@@ -480,7 +480,7 @@
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
      :plugins (fnk [[:config {plugins {}}]]
-                (let [{:keys [job-launch-filter job-routing job-submission-validator pool-selection]} plugins]
+                (let [{:keys [job-launch-filter job-routing job-submission-validator pool-selection job-submission-modifier]} plugins]
                   (merge plugins
                          {:job-launch-filter
                           (merge
@@ -510,7 +510,9 @@
                           :pool-selection
                           (merge {:attribute-name "cook-pool"
                                   :default-pool "no-pool"}
-                                 pool-selection)})))
+                                 pool-selection)
+                          :job-submission-modifier
+                          job-submission-modifier})))
      :quota-grouping (fnk [[:config {quota-grouping {}}]]
                        quota-grouping)
      :pg-config (fnk [[:config {pg-config nil}]]
@@ -750,6 +752,11 @@
 (defn job-routing
   []
   (-> config :settings :plugins :job-routing))
+
+(defn job-routing-pool-name?
+  "Returns truthy if the given pool name is a job-routing pool name"
+  [pool-name-from-submission]
+  (get (job-routing) pool-name-from-submission))
 
 (defn constraint-attribute->transformation
   []

@@ -128,6 +128,7 @@
                          #'cook.config/config
                          #'cook.plugins.adjustment/plugin
                          #'cook.plugins.file/plugin
+                         #'cook.plugins.job-submission-modifier/plugin
                          #'cook.plugins.launch/job-launch-cache
                          #'cook.plugins.launch/plugin-object
                          #'cook.plugins.pool/plugin
