@@ -411,7 +411,7 @@
   "Record the pod's hostname in Datomic."
   [pod-name {:keys [^V1Pod pod]}]
   (log-structured/debug "nyc-record-hostname1" {:k8s-pod (api/kubernetes-scheduler-pod? pod-name)})
-  (when-not (api/kubernetes-scheduler-pod? pod-name)
+  (when (api/kubernetes-scheduler-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           hostname (api/pod->node-name pod)]
         (log-structured/debug "nyc-record-hostname2" {:hostname hostname :task-id task-id})
