@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.4] - 2022-08-12
+### Added
+- Add new JobSubmissionModifier and refactor JobRouter, from @laurameng
+
+### Changed
+- Prometheus metrics
+  - Updated match cycle metric logic for 0 considerable case, from @samincheva
+  - Added prometheus metric for synthetic pods count, from @samincheva
+- Use a factory fn for creating (future) different types of pool handlers, from @ahaysx
+
 ## [1.62.3] - 2022-08-03
 ### Changed
 - Configured the /metrics endpoint to have a separate rate limit, from @samincheva
