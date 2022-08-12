@@ -2250,10 +2250,7 @@
         job-ref [:job/uuid uuid]
         instance-start-time (now)]
     [[:job/allowed-to-start? job-ref]
-     ;; NB we set any job with an instance in a non-terminal
-     ;; state to running to prevent scheduling the same job
-     ;; twice; see schema definition for state machine
-     ;; TODO(alexh): reconsider state machine for Kubernetes Scheduler jobs.
+     ;; The job will remain waiting until the instance is running.
      [:db/add job-ref :job/state :job.state/waiting]
      (cond->
       {:db/id (d/tempid :db.part/user)
@@ -2267,7 +2264,6 @@
        :instance/progress 0
        :instance/slave-id "Unknown"
        :instance/start-time instance-start-time
-       ;; TODO(alexh): reconsider state machine for Kubernetes Scheduler jobs.
        :instance/status :instance.status/unknown
        :instance/task-id task-id
        :instance/compute-cluster (cc/db-id compute-cluster)}
