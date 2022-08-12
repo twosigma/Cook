@@ -13,6 +13,7 @@
             [cook.log-structured :as log-structured]
             [cook.monitor :as monitor]
             [cook.passport :as passport]
+            [cook.prometheus-metrics :as prom]
             [cook.regexp-tools :as regexp-tools]
             [cook.rest.api :as api]
             [cook.scheduler.constraints :as constraints]
@@ -194,7 +195,7 @@
     reconnecting the watch. This function is called at the start of watch processing (with one
     metric name) and between watch events (with a different metric name). In both cases, we
     update the last-watch-response-or-connect timestamp."
-    [compute-cluster-name watch-object-type metric-name log?]
+    [compute-cluster-name watch-object-type metric-name prom-metric-name log?]
     (when-let [last-watch-response-or-connect-millis
                (get-in
                  @last-watch-response-or-connect-millis-atom
@@ -203,6 +204,7 @@
             metric-name (str (name watch-object-type) "-" metric-name)]
         (histograms/update!
           (metrics/histogram metric-name compute-cluster-name) millis)
+        (prom/observe prom-metric-name {:compute-cluster compute-cluster-name :object watch-object-type} millis)
         (when log?
           (log-structured/info
             "Marked watch gap"
@@ -219,12 +221,12 @@
 (defn mark-watch-gap!
   "Updates the watch-gap-millis metric."
   [compute-cluster-name watch-object-type]
-  (update-watch-gap-metric! compute-cluster-name watch-object-type "watch-gap-millis" false))
+  (update-watch-gap-metric! compute-cluster-name watch-object-type "watch-gap-millis" prom/watch-gap false))
 
 (defn mark-disconnected-watch-gap!
   "Updates the disconnected-watch-gap-millis metric."
   [compute-cluster-name watch-object-type]
-  (update-watch-gap-metric! compute-cluster-name watch-object-type "disconnected-watch-gap-millis" true))
+  (update-watch-gap-metric! compute-cluster-name watch-object-type "disconnected-watch-gap-millis" prom/disconnected-watch-gap true))
 
 (defn handle-watch-updates
   "When a watch update occurs (for pods or nodes) update both the state atom as well as
@@ -293,9 +295,11 @@
                  :number-pods-so-far (count all-pods)
                  :resource-version resource-version-string})
       (let [{:keys [continue pods resource-version]}
-            (timers/time!
-              (metrics/timer "get-all-pods-single-chunk" compute-cluster-name)
-              (list-pods-for-all-namespaces api continue-string limit))
+            (prom/with-duration
+              prom/list-pods-chunk-duration {:compute-cluster compute-cluster-name}
+              (timers/time!
+                (metrics/timer "get-all-pods-single-chunk" compute-cluster-name)
+                (list-pods-for-all-namespaces api continue-string limit)))
             new-all-pods (concat all-pods pods)]
 
         ; Note that the resourceVersion of the list remains constant across each request,
@@ -331,10 +335,12 @@
 (defn get-all-pods-in-kubernetes
   "Get all pods in kubernetes."
   [api-client compute-cluster-name limit]
-  (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
-    (let [{:keys [pods resource-version]} (list-pods api-client compute-cluster-name limit)
-          namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key pods)]
-      [resource-version namespaced-pod-name->pod])))
+  (prom/with-duration
+    prom/list-pods-duration {:compute-cluster compute-cluster-name}
+    (timers/time! (metrics/timer "get-all-pods" compute-cluster-name)
+                  (let [{:keys [pods resource-version]} (list-pods api-client compute-cluster-name limit)
+                        namespaced-pod-name->pod (pc/map-from-vals get-pod-namespaced-key pods)]
+                    [resource-version namespaced-pod-name->pod]))))
 
 (defn try-forever-get-all-pods-in-kubernetes
   "Try forever to get all pods in kubernetes. Used when starting a cluster up."
@@ -421,8 +427,12 @@
             get-pod-namespaced-key
             callbacks
             (fn []
+              (prom/set prom/total-pods {:compute-cluster compute-cluster-name} (-> @all-pods-atom keys count))
               (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
-              (when max-total-pods (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
+              (when max-total-pods
+                (do
+                  (prom/set prom/max-pods {:compute-cluster compute-cluster-name} max-total-pods)
+                  (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name))))
             compute-cluster-name
             :pod)
           (catch Exception e
@@ -481,19 +491,21 @@
     compute-cluster-name :name {:keys [max-total-nodes]} :synthetic-pods-config :as compute-cluster}]
   (let [api (CoreV1Api. api-client)
         ^V1NodeList current-nodes-raw
-        (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
-                      (.listNode api
-                                 nil ; pretty
-                                 nil ; allowWatchBookmarks
-                                 nil ; continue
-                                 nil ; fieldSelector
-                                 nil ; labelSelector
-                                 nil ; limit
-                                 nil ; resourceVersion
-                                 nil ; resourceVersionMatch
-                                 nil ; timeoutSeconds
-                                 nil ; watch
-                                 ))
+        (prom/with-duration
+          prom/list-nodes-duration {:compute-cluster compute-cluster-name}
+          (timers/time! (metrics/timer "get-all-nodes" compute-cluster-name)
+                        (.listNode api
+                                   nil ; pretty
+                                   nil ; allowWatchBookmarks
+                                   nil ; continue
+                                   nil ; fieldSelector
+                                   nil ; labelSelector
+                                   nil ; limit
+                                   nil ; resourceVersion
+                                   nil ; resourceVersionMatch
+                                   nil ; timeoutSeconds
+                                   nil ; watch
+                                   )))
         current-nodes (pc/map-from-vals node->node-name (.getItems current-nodes-raw))
         callbacks
         [(tools/make-atom-updater current-nodes-atom) ; Update the set of all pods.
@@ -532,8 +544,12 @@
             node->node-name
             callbacks ; Update the set of all nodes.
             (fn []
-              (set-metric-counter "total-nodes" (-> @current-nodes-atom keys count) compute-cluster-name)
-              (when max-total-nodes (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
+              (prom/set prom/total-nodes {:compute-cluster compute-cluster-name} (-> @current-nodes-atom keys count))
+              (set-metric-counter "total-nodes"  (-> @current-nodes-atom keys count) compute-cluster-name)
+              (when max-total-nodes
+                (do
+                  (prom/set prom/max-nodes {:compute-cluster compute-cluster-name} max-total-nodes)
+                  (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name))))
             compute-cluster-name
             :node)
           (catch Exception e
@@ -2029,38 +2045,42 @@
         pod-namespace (-> pod .getMetadata .getNamespace)]
     ; TODO: This likes to noisily throw NotFound multiple times as we delete away from kubernetes.
     ; I suspect our predicate of k8s-actual-state-equivalent needs tweaking.
-    (timers/time! (metrics/timer "delete-pod" compute-cluster-name)
-      (try
-        (.deleteNamespacedPod
-          api
-          pod-name
-          pod-namespace
-          nil ; pretty
-          nil ; dryRun
-          nil ; gracePeriodSeconds
-          nil ; orphanDependents
-          nil ; propagationPolicy
-          deleteOptions
-          )
-        (catch JsonSyntaxException e
-          ; Silently gobble this exception.
-          ;
-          ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
-          ; https://github.com/kubernetes-client/java/issues/252
-          ; https://github.com/kubernetes-client/java/issues/86
-          ;
-          ; They actually advise catching the exception and moving on!
-          ;
-          (log-structured/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception deleting pod"
-                               {:pod-name pod-name :compute-cluster compute-cluster-name}))
-        (catch ApiException e
-          (meters/mark! (metrics/meter "delete-pod-errors" compute-cluster-name))
-          (let [code (.getCode e)
-                already-deleted? (contains? #{404} code)]
-            (if already-deleted?
-              (log-structured/info "Pod was already deleted"
-                                   {:pod-name pod-name :compute-cluster compute-cluster-name})
-              (throw e))))))))
+    (prom/with-duration
+      prom/delete-pod-duration {:compute-cluster compute-cluster-name}
+      (timers/time!
+        (metrics/timer "delete-pod" compute-cluster-name)
+        (try
+          (.deleteNamespacedPod
+            api
+            pod-name
+            pod-namespace
+            nil ; pretty
+            nil ; dryRun
+            nil ; gracePeriodSeconds
+            nil ; orphanDependents
+            nil ; propagationPolicy
+            deleteOptions
+            )
+          (catch JsonSyntaxException e
+            ; Silently gobble this exception.
+            ;
+            ; The java API can throw a a JsonSyntaxException parsing the kubernetes reply!
+            ; https://github.com/kubernetes-client/java/issues/252
+            ; https://github.com/kubernetes-client/java/issues/86
+            ;
+            ; They actually advise catching the exception and moving on!
+            ;
+            (log-structured/info "Caught the https://github.com/kubernetes-client/java/issues/252 exception deleting pod"
+                                 {:pod-name pod-name :compute-cluster compute-cluster-name}))
+          (catch ApiException e
+            (prom/inc prom/delete-pod-errors {:compute-cluster compute-cluster-name})
+            (meters/mark! (metrics/meter "delete-pod-errors" compute-cluster-name))
+            (let [code (.getCode e)
+                  already-deleted? (contains? #{404} code)]
+              (if already-deleted?
+                (log-structured/info "Pod was already deleted"
+                                     {:pod-name pod-name :compute-cluster compute-cluster-name})
+                (throw e)))))))))
 
 (defn delete-collect-results-finalizer
   "Delete the finalizer that collects the results of a pod completion state once the pod has a
@@ -2078,36 +2098,43 @@
     (when (and pod-deletion-timestamp (some #(= FinalizerHelper/collectResultsFinalizer %) finalizers))
       (log-structured/info "Deleting finalizer for pod"
                            {:pod-name pod-name :compute-cluster compute-cluster-name})
-      (timers/time! (metrics/timer "delete-finalizer" compute-cluster-name)
-        (try
-          (FinalizerHelper/removeFinalizer api-client pod)
-          (catch ApiException e
-            (let [code (.getCode e)]
-              ; There can be races here. Whenever we hit the state machine, we will run this code
-              ; and may try to delete the finalizer twice. The second invocation can see the pod
-              ; already deleted or it can see an unprocesssable entity as we try to delete a finalizer
-              ; that's already gone.
-              (case code
-                404
-                (do
-                  (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
-                  (log-structured/info "Not Found error deleting finalizer for pod"
-                                       {:pod-name pod-name :compute-cluster compute-cluster-name}))
-                422
-                (do
-                  (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
-                  (log-structured/info "Unprocessable Entity error deleting finalizer for pod"
-                            {:pod-name pod-name :compute-cluster compute-cluster-name}))
-                (do
-                  (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
-                  (log-structured/error "Error deleting finalizer for pod"
-                             {:pod-name pod-name :compute-cluster compute-cluster-name}
-                             e)))))
-          (catch Exception e
-            (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
-            (log-structured/error "Error deleting finalizer for pod"
-                                  {:pod-name pod-name :compute-cluster compute-cluster-name}
-                                  e)))))))
+      (prom/with-duration
+        prom/delete-finalizer-duration {:compute-cluster compute-cluster-name}
+        (timers/time!
+          (metrics/timer "delete-finalizer" compute-cluster-name)
+          (try
+            (FinalizerHelper/removeFinalizer api-client pod)
+            (catch ApiException e
+              (let [code (.getCode e)]
+                ; There can be races here. Whenever we hit the state machine, we will run this code
+                ; and may try to delete the finalizer twice. The second invocation can see the pod
+                ; already deleted or it can see an unprocesssable entity as we try to delete a finalizer
+                ; that's already gone.
+                (case code
+                  404
+                  (do
+                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :expected})
+                    (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
+                    (log-structured/info "Not Found error deleting finalizer for pod"
+                                         {:pod-name pod-name :compute-cluster compute-cluster-name}))
+                  422
+                  (do
+                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :expected})
+                    (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
+                    (log-structured/info "Unprocessable Entity error deleting finalizer for pod"
+                                         {:pod-name pod-name :compute-cluster compute-cluster-name}))
+                  (do
+                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :unexpected})
+                    (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
+                    (log-structured/error "Error deleting finalizer for pod"
+                                          {:pod-name pod-name :compute-cluster compute-cluster-name}
+                                          e)))))
+            (catch Exception e
+              (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :unexpected})
+              (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
+              (log-structured/error "Error deleting finalizer for pod"
+                                    {:pod-name pod-name :compute-cluster compute-cluster-name}
+                                    e))))))))
 
 
 
@@ -2147,8 +2174,11 @@
                               :pod-json (print-str (.serialize json pod))
                               :pod-namespace namespace})
         (try
-          (timers/time! (metrics/timer "launch-pod" compute-cluster-name)
-            (create-namespaced-pod api namespace pod))
+          (prom/with-duration
+            prom/launch-pod-duration {:compute-cluster compute-cluster-name}
+            (timers/time!
+              (metrics/timer "launch-pod" compute-cluster-name)
+              (create-namespaced-pod api namespace pod)))
           (passport/log-event
             (merge
               passport-base-map
@@ -2195,8 +2225,12 @@
                          :terminal-failure? terminal-failure?}
                         e)
               (if bad-pod-spec?
-                (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name))
-                (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name)))
+                (do
+                  (prom/inc prom/launch-pod-errors {:compute-cluster compute-cluster-name :bad-spec "true"})
+                  (meters/mark! (metrics/meter "launch-pod-bad-spec-errors" compute-cluster-name)))
+                (do
+                  (prom/inc prom/launch-pod-errors {:compute-cluster compute-cluster-name :bad-spec "false"})
+                  (meters/mark! (metrics/meter "launch-pod-good-spec-errors" compute-cluster-name))))
               {:failure-reason failure-reason
                :terminal-failure? terminal-failure?}))))
       (do
