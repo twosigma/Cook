@@ -6,6 +6,7 @@
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.metrics :as metrics]
+            [cook.log-structured :as log-structured]
             [cook.mesos.sandbox :as sandbox]
             [cook.passport :as passport]
             [cook.scheduler.scheduler :as scheduler]
@@ -409,9 +410,12 @@
 (defn record-hostname
   "Record the pod's hostname in Datomic."
   [pod-name {:keys [^V1Pod pod]}]
+  (log-structured/debug "nyc-record-hostname1" {:k8s-pod (api/kubernetes-scheduler-pod? pod-name)})
   (when-not (api/kubernetes-scheduler-pod? pod-name)
     (let [task-id (-> pod .getMetadata .getName)
           hostname (api/pod->node-name pod)]
+        (log-structured/debug "nyc-record-hostname2" {:hostname hostname :task-id task-id})
+
       (when hostname (scheduler/write-hostname-to-datomic datomic/conn task-id hostname)))))
 
 (defn handle-pod-killed
@@ -702,8 +706,10 @@
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
          (record-sandbox-url pod-name new-state)))
      ; Hostname will change for pods scheduled by Kubernetes.
+     (log-structured/debug "nyc-synth1" {:old old-state :new new-state :old-node (api/pod->node-name (:pod old-state)) :new-node (api/pod->node-name (:pod new-state))})
      (when-not (= (api/pod->node-name (:pod new-state))
                   (api/pod->node-name (:pod old-state)))
+       (log/debug "nyc-synth2")
        (record-hostname pod-name new-state))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
