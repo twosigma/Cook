@@ -79,10 +79,10 @@
                                 :max-preemption 100.0
                                 :pool-regex ".*"})
 
-(def default-fenzo-config {:good-enough-fitness 1.0})
-
 (def default-pool-config [{:pool-regex ".*"
                            :scheduler-config {:scheduler "fenzo"
+                                              :good-enough-fitness 1.0
+                                              :fenzo-fitness-calculator config/default-fitness-calculator
                                               :fenzo-max-jobs-considered 2000
                                               :fenzo-scaleback 0.95
                                               :fenzo-floor-iterations-before-warn 10
@@ -129,7 +129,6 @@
          sandbox-syncer-state# {:task-id->sandbox-agent (agent {})}
          host-settings# {:server-port 12321 :hostname "localhost"}
          leadership-atom# (atom false)
-         fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          optimizer-config# (or (:optimizer-config ~scheduler-config)
                                {})
          trigger-chans# (or (:trigger-chans ~scheduler-config)
@@ -176,7 +175,6 @@
                                                          framework-id#)
          (c/start-leader-selector
            {:curator-framework curator-framework#
-            :fenzo-config fenzo-config#
             :mea-culpa-failure-limit mea-culpa-failure-limit#
             :mesos-datomic-conn conn#
             :mesos-datomic-mult mesos-mult#
@@ -747,6 +745,8 @@
                 :scheduler-config {:rebalancer-config {:max-preemption 1.0}}}
         pool-schedulers-config [{:pool-regex ".*"
                                  :scheduler-config {:scheduler "fenzo"
+                                                    :good-enough-fitness 1.0
+                                                    :fenzo-fitness-calculator config/default-fitness-calculator
                                                     :fenzo-max-jobs-considered 200
                                                     :fenzo-scaleback 0.95
                                                     :fenzo-floor-iterations-before-warn 10

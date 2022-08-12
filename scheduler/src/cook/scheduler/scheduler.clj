@@ -2166,10 +2166,10 @@
     resources-atom))
 
 (defn create-datomic-scheduler
-  [{:keys [conn cluster-name->compute-cluster-atom fenzo-fitness-calculator good-enough-fitness
-           mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
-           pool-name->pending-jobs-atom rebalancer-reservation-atom task-constraints
-           trigger-chans]}]
+  [{:keys [conn cluster-name->compute-cluster-atom mea-culpa-failure-limit 
+           mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
+           pool-name->pending-jobs-atom rebalancer-reservation-atom 
+           task-constraints trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
@@ -2180,8 +2180,9 @@
                  [{:pool/name "no-pool"}])
         pool->scheduler-config (pool-map pools' (fn [{:keys [pool/name]}]
                                                  (pool-scheduler-config (config/pool-schedulers) name)))
-        pool-name->fenzo-state (pool-map pools' (fn [_] (make-fenzo-state offer-incubate-time-ms
-                                                                          fenzo-fitness-calculator good-enough-fitness)))
+        pool-name->fenzo-state (pool-map pools' (fn [{:keys [pool/name]}] (make-fenzo-state offer-incubate-time-ms
+                                                                          (:fenzo-fitness-calculator (get pool->scheduler-config name))
+                                                                          (:good-enough-fitness (get pool->scheduler-config name)))))
         pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
         pool-names-linked-list (LinkedList. (map :pool/name pools'))
         job->acceptable-compute-clusters-fn

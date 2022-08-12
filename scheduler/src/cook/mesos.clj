@@ -169,16 +169,13 @@
    rebalancer-config             -- map, config for rebalancer. See scheduler/docs/rebalancer-config.adoc for details
    progress-config               -- map, config for progress publishing. See scheduler/docs/configuration.adoc
    framework-id                  -- str, the Mesos framework id from the cook settings
-   fenzo-config                  -- map, config for fenzo globally, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object
    api-only?                     -- bool, true if this instance should not actually join the leader selection"
-  [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
+  [{:keys [curator-framework mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
            mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix api-only?]}]
-  (let [
-        {:keys [fenzo-fitness-calculator good-enough-fitness]} fenzo-config
-        {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
+  (let [{:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
@@ -209,8 +206,6 @@
                                     (sched/create-datomic-scheduler
                                       {:conn mesos-datomic-conn
                                        :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
-                                       :fenzo-fitness-calculator fenzo-fitness-calculator
-                                       :good-enough-fitness good-enough-fitness
                                        :mea-culpa-failure-limit mea-culpa-failure-limit
                                        :mesos-run-as-user mesos-run-as-user
                                        :agent-attributes-cache agent-attributes-cache

@@ -384,15 +384,9 @@
                             (or (when scheduler
                                   (:max-over-quota-jobs scheduler))
                                 100))
-     :fenzo-fitness-calculator (fnk [[:config {scheduler nil}]]
-                                 (when scheduler
-                                   (or (:fenzo-fitness-calculator scheduler) default-fitness-calculator)))
      :mesos-gpu-enabled (fnk [[:config {mesos nil}]]
                           (when mesos
                             (boolean (or (:enable-gpu-support mesos) false))))
-     :good-enough-fitness (fnk [[:config {scheduler nil}]]
-                            (when scheduler
-                              (or (:good-enough-fitness scheduler) 0.8)))
      ; TODO(pschorf): Rename
      :mesos-leader-path (fnk [[:config {mesos nil}]]
                           (:leader-path mesos))
@@ -463,6 +457,8 @@
                 (not (:schedulers pools))
                 (assoc :schedulers [{:pool-regex ".*"
                                      :scheduler-config {:scheduler "fenzo"
+                                                        :good-enough-fitness 0.8
+                                                        :fenzo-fitness-calculator default-fitness-calculator
                                                         :fenzo-max-jobs-considered 1000
                                                         :fenzo-scaleback 0.95
                                                         :fenzo-floor-iterations-before-warn 10
