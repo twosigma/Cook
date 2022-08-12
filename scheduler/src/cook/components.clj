@@ -101,9 +101,8 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
-                           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
-                           good-enough-fitness hostname mea-culpa-failure-limit mesos-leader-path mesos-run-as-user
+  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator good-enough-fitness hostname
+                           mea-culpa-failure-limit mesos-leader-path mesos-run-as-user
                            offer-incubate-time-ms optimizer rebalancer server-port task-constraints]
                           compute-clusters curator-framework mesos-datomic-mult leadership-atom
                           pool-name->pending-jobs-atom mesos-heartbeat-chan
@@ -119,11 +118,7 @@
                             (Class/forName "org.apache.mesos.Scheduler")
                             ((util/lazy-load-var 'cook.mesos/start-leader-selector)
                               {:curator-framework curator-framework
-                               :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                              :fenzo-scaleback fenzo-scaleback
-                                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                              :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                              :fenzo-fitness-calculator fenzo-fitness-calculator
+                               :fenzo-config {:fenzo-fitness-calculator fenzo-fitness-calculator
                                               :good-enough-fitness good-enough-fitness}
                                :mea-culpa-failure-limit mea-culpa-failure-limit
                                :mesos-datomic-conn datomic/conn

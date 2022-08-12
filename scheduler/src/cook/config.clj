@@ -384,18 +384,6 @@
                             (or (when scheduler
                                   (:max-over-quota-jobs scheduler))
                                 100))
-     :fenzo-max-jobs-considered (fnk [[:config {scheduler nil}]]
-                                  (when scheduler
-                                    (or (:fenzo-max-jobs-considered scheduler) 1000)))
-     :fenzo-scaleback (fnk [[:config {scheduler nil}]]
-                        (when scheduler
-                          (or (:fenzo-scaleback scheduler) 0.95)))
-     :fenzo-floor-iterations-before-warn (fnk [[:config {scheduler nil}]]
-                                           (when scheduler
-                                             (or (:fenzo-floor-iterations-before-warn scheduler) 10)))
-     :fenzo-floor-iterations-before-reset (fnk [[:config {scheduler nil}]]
-                                            (when scheduler
-                                              (or (:fenzo-floor-iterations-before-reset scheduler) 1000)))
      :fenzo-fitness-calculator (fnk [[:config {scheduler nil}]]
                                  (when scheduler
                                    (or (:fenzo-fitness-calculator scheduler) default-fitness-calculator)))
@@ -471,7 +459,14 @@
                 (not (:default-env pools))
                 (assoc :default-env [])
                 (not (:quotas pools))
-                (assoc :quotas [])))
+                (assoc :quotas [])
+                (not (:schedulers pools))
+                (assoc :schedulers [{:pool-regex ".*"
+                                     :scheduler-config {:scheduler "fenzo"
+                                                        :fenzo-max-jobs-considered 1000
+                                                        :fenzo-scaleback 0.95
+                                                        :fenzo-floor-iterations-before-warn 10
+                                                        :fenzo-floor-iterations-before-reset 1000}}])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]
@@ -766,3 +761,7 @@
   "Configuration flags for grouping quota."
   []
   (-> config :settings :quota-grouping))
+
+(defn pool-schedulers
+  []
+  (get-in config [:settings :pools :schedulers]))

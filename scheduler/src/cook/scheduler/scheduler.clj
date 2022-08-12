@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.scheduler
-  (:require [chime :refer [chime-at chime-ch]]
+  (:require [chime :refer [chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
             [clojure.core.async :as async]
@@ -24,8 +24,8 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
-            [cook.cached-queries :as cached-queries]
             [cook.cache :as ccache]
+            [cook.cached-queries :as cached-queries]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -42,6 +42,7 @@
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
+            [cook.regexp-tools :as regexp-tools]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
             [cook.scheduler.fenzo-utils :as fenzo]
@@ -65,7 +66,7 @@
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
              VirtualMachineLease SchedulingResult VMAssignmentResult)
            (com.netflix.fenzo.functions Action1 Action2 Func1)
-           (java.util LinkedList Date)))
+           (java.util Date LinkedList)))
 
 (defn now
   ^Date []
@@ -1425,15 +1426,17 @@
 
 (defn handle-fenzo-pool
   "Handle scheduling pending jobs using the Fenzo Scheduler."
-  [conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache max-considerable
-   scaleback floor-iterations-before-warn floor-iterations-before-reset rebalancer-reservation-atom
-   mesos-run-as-user pool-name compute-clusters job->acceptable-compute-clusters-fn
-   user->quota user->usage-future]
+  [conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache 
+   scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters 
+   job->acceptable-compute-clusters-fn user->quota user->usage-future]
   (log-structured/info "Creating handler for Fenzo pool" {:pool pool-name})
   (timers/time!
    (timers/timer (metric-title "match-jobs-event" pool-name))
    (tracing/with-span [s {:name "scheduler.offer-handler.match-jobs" :tags {:pool pool-name :component tracing-component-tag}}]
-     (let [num-considerable @fenzo-num-considerable-atom
+     (let [{max-considerable :fenzo-max-jobs-considered scaleback :fenzo-scaleback
+            floor-iterations-before-warn :fenzo-floor-iterations-before-warn 
+            floor-iterations-before-reset :fenzo-floor-iterations-before-reset} scheduler-config
+           num-considerable @fenzo-num-considerable-atom
            next-considerable
            (try
              (let [;; Try to clear the channel
@@ -1472,11 +1475,11 @@
                                                           job->acceptable-compute-clusters-fn)]
                (when (seq offers)
                  (reset! resources-atom (view-incubating-offers fenzo)))
-            ;; This check ensures that, although we value Fenzo's optimizations,
-            ;; we also value Cook's sensibility of fairness when deciding which jobs
-            ;; to schedule.  If Fenzo produces a set of matches that doesn't include
-            ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
-            ;; freedom in the form of fewer jobs to consider.
+               ;; This check ensures that, although we value Fenzo's optimizations,
+               ;; we also value Cook's sensibility of fairness when deciding which jobs
+               ;; to schedule.  If Fenzo produces a set of matches that doesn't include
+               ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
+               ;; freedom in the form of fewer jobs to consider.
                (if matched-head?
                  max-considerable
                  (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
@@ -1493,7 +1496,7 @@
          (counters/inc! iterations-at-fenzo-floor)
          (counters/clear! iterations-at-fenzo-floor))
 
-       (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
+       (when (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
          (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
                               {:pool pool-name
                                :iterations-count (counters/value iterations-at-fenzo-floor)}))
@@ -2099,19 +2102,35 @@
                 "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
     (async/pipe (chime-ch (util/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
 
+(defn kubernetes-scheduler?
+  "Return true if the scheduler is Kubernetes Scheduler."
+  [scheduler-name]
+  (= "kubernetes" scheduler-name))
+
+(defn pool-scheduler-config
+  "Get the scheduler config for a pool."
+  [schedulers pool-name]
+  (regexp-tools/match-based-on-pool-name
+   schedulers
+   pool-name
+   :scheduler-config))
+
 (defn make-pool-handler
   "Make the configured handler for the pool to do scheduling."
-  [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered scaleback
-   floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn]
+  [conn fenzo-state pool-name->pending-jobs-atom agent-attributes-cache scheduler-config trigger-chan
+   rebalancer-reservation-atom mesos-run-as-user pool-name cluster-name->compute-cluster-atom
+   job->acceptable-compute-clusters-fn]
   (let [fenzo (:fenzo fenzo-state)
         resources-atom (atom (view-incubating-offers fenzo))
-        using-pools? (not (nil? (config/default-pool)))]
-    (reset! fenzo-num-considerable-atom fenzo-max-jobs-considered)
+        using-pools? (not (nil? (config/default-pool)))
+        scheduler-name (:scheduler scheduler-config)
+        using-kubernetes-scheduler? (kubernetes-scheduler? scheduler-name)]
+    (when-not using-kubernetes-scheduler?
+      (reset! fenzo-num-considerable-atom (:fenzo-max-jobs-considered scheduler-config)))
     (tools/chime-at-ch
      trigger-chan
      (fn pool-schedule-event []
-       (log-structured/info "Starting pool handler" {:pool pool-name})
+       (log-structured/info "Starting pool handler" {:pool pool-name :scheduler-name scheduler-name})
        (prom/with-duration
          prom/scheduler-match-cycle-duration {:pool pool-name}
          (tracing/with-span [s {:name "scheduler.pool-handler" :tags {:pool pool-name :component tracing-component-tag}}]
@@ -2137,9 +2156,8 @@
                                                 (generate-user-usage-map (d/db conn) pool-name)))
                    compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                    user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))]
-               (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
-                                  scaleback floor-iterations-before-warn floor-iterations-before-reset
-                                  rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
+               (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache 
+                                  scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
                                   job->acceptable-compute-clusters-fn user->quota user->usage-future))
              (catch Exception e
                (log-structured/error "Pool handler encountered exception; continuing" {:pool pool-name} e)))))
@@ -2148,8 +2166,7 @@
     resources-atom))
 
 (defn create-datomic-scheduler
-  [{:keys [conn cluster-name->compute-cluster-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
-           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness
+  [{:keys [conn cluster-name->compute-cluster-atom fenzo-fitness-calculator good-enough-fitness
            mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pool-name->pending-jobs-atom rebalancer-reservation-atom task-constraints
            trigger-chans]}]
@@ -2161,6 +2178,8 @@
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
+        pool->scheduler-config (pool-map pools' (fn [{:keys [pool/name]}]
+                                                 (pool-scheduler-config (config/pool-schedulers) name)))
         pool-name->fenzo-state (pool-map pools' (fn [_] (make-fenzo-state offer-incubate-time-ms
                                                                           fenzo-fitness-calculator good-enough-fitness)))
         pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
@@ -2176,8 +2195,7 @@
                                 (make-pool-handler
                                  conn (get pool-name->fenzo-state name)
                                  pool-name->pending-jobs-atom agent-attributes-cache
-                                 fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
-                                 fenzo-floor-iterations-before-reset (get pool->match-trigger-chan name)
+                                 (get pool->scheduler-config name) (get pool->match-trigger-chan name)
                                  rebalancer-reservation-atom mesos-run-as-user name
                                  cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
     (prepare-match-trigger-chan match-trigger-chan pools')

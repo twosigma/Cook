@@ -4,7 +4,6 @@
 (ns cook.test.zz-simulator
   (:gen-class)
   (:require [cheshire.core :as cheshire]
-            [chime :refer [chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
@@ -16,21 +15,22 @@
             [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
             [clojure.walk :refer [keywordize-keys]]
-            [com.rpl.specter :refer [ALL FIRST MAP-KEYS MAP-VALS select transform]]
-            [cook.config :refer [executor-config init-logger]]
+            [com.rpl.specter :refer [ALL MAP-KEYS MAP-VALS transform]]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.mesos :as c]
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.mesos-mock :as mm]
             [cook.plugins.completion :as completion]
-            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
+            [cook.test.postgres]
+            [cook.test.testutil :as testutil :refer [poll-until
+                                                     restore-fresh-database!]]
             [cook.tools :as util]
             [datomic.api :as d]
-            [plumbing.core :refer [map-from-vals map-keys map-vals]])
+            [plumbing.core :refer [map-vals]])
   (:import (java.util Date)
            (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.curator.framework CuratorFrameworkFactory)
@@ -79,11 +79,14 @@
                                 :max-preemption 100.0
                                 :pool-regex ".*"})
 
-(def default-fenzo-config {:fenzo-max-jobs-considered 2000
-                           :fenzo-scaleback 0.95
-                           :fenzo-floor-iterations-before-warn 10
-                           :fenzo-floor-iterations-before-reset 1000
-                           :good-enough-fitness 1.0})
+(def default-fenzo-config {:good-enough-fitness 1.0})
+
+(def default-pool-config [{:pool-regex ".*"
+                           :scheduler-config {:scheduler "fenzo"
+                                              :fenzo-max-jobs-considered 2000
+                                              :fenzo-scaleback 0.95
+                                              :fenzo-floor-iterations-before-warn 10
+                                              :fenzo-floor-iterations-before-reset 1000}}])
 
 (def default-task-constraints {:timeout-hours 1
                                :timeout-interval-minutes 1
@@ -92,7 +95,7 @@
                                :retry-limit 5})
 
 (defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn scheduler-config trigger-matching? & body]
+  [conn make-mesos-driver-fn scheduler-config trigger-matching? pool-schedulers-config & body]
   `(let [conn# ~conn
          [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
@@ -152,7 +155,7 @@
                                                               (ReentrantReadWriteLock. true)))
          prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
      (try
-       (with-redefs [executor-config (constantly executor-config#)
+       (with-redefs [config/executor-config (constantly executor-config#)
                      completion/plugin completion/no-op
                      ; This initializatioon is needed so the code to validate that the
                      ; registration responses matches the configured cook scheduler passes simulator
@@ -162,7 +165,10 @@
                      sched/prepare-match-trigger-chan (fn [match-trigger-chan# pools#]
                                                         (when
                                                           ~trigger-matching?
-                                                          (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))]
+                                                          (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))
+                     config/pool-schedulers (constantly (if (empty? ~pool-schedulers-config)
+                                                          default-pool-config
+                                                          ~pool-schedulers-config))]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
@@ -355,7 +361,7 @@
    The start simulation time is the min submit time in the trace.
 
    Returns a list of the task entities run"
-  [mesos-hosts trace cycle-step-ms config temp-out-trace-file]
+  [mesos-hosts trace cycle-step-ms config pool-schedulers-config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
@@ -424,6 +430,7 @@
       make-mesos-driver-fn
       scheduler-config
       false
+      pool-schedulers-config
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
           (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))
@@ -575,7 +582,7 @@
   [& args]
   (println "Starting simulation")
   (System/setProperty "COOK.SIMULATION" (str true))
-  (init-logger)
+  (config/init-logger)
   (let [{:keys [options errors summary]} (parse-opts args cli-options)
         {:keys [trace-file host-file cycle-step-ms out-trace-file config-file help]} options]
     (when errors
@@ -599,16 +606,17 @@
                      keywordize-keys
                      ;; This is needed because we want the roles to be strings
                      (transform [ALL :resources MAP-VALS MAP-KEYS] name))
-          config (if config-file
-                   (edn/read-string (slurp config-file))
-                   {})
-          cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
+          cook-config (if config-file
+                        (edn/read-string (slurp config-file))
+                        {})
+          cycle-step-ms (or cycle-step-ms (:cycle-step-ms cook-config))
           _ (when-not cycle-step-ms
               (throw (ex-info "Must configure cycle-step-ms on command line or config file" {})))
           task-ents (simulate hosts
                               (cheshire/parse-stream (clojure.java.io/reader trace-file) true)
                               cycle-step-ms
-                              config
+                              cook-config
+                              (get-in cook-config [:settings :pools :schedulers])
                               (str out-trace-file ".temp-" (System/nanoTime)))]
       (println "tasks run: " (count task-ents))
       (dump-jobs-to-csv task-ents out-trace-file)
@@ -735,11 +743,16 @@
         hosts (for [i (range num-hosts)]
                 (trace-host i host-mem host-cpus))
         cycle-step-ms 30000
-        config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
-                :scheduler-config {:rebalancer-config {:max-preemption 1.0}
-                                   :fenzo-config {:fenzo-max-jobs-considered 200}}}
-        out-trace-a (simulate hosts jobs cycle-step-ms config nil)
-        out-trace-b (simulate hosts jobs cycle-step-ms config nil)]
+        cook-config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
+                :scheduler-config {:rebalancer-config {:max-preemption 1.0}}}
+        pool-schedulers-config [{:pool-regex ".*"
+                                 :scheduler-config {:scheduler "fenzo"
+                                                    :fenzo-max-jobs-considered 200
+                                                    :fenzo-scaleback 0.95
+                                                    :fenzo-floor-iterations-before-warn 10
+                                                    :fenzo-floor-iterations-before-reset 1000}}]
+        out-trace-a (simulate hosts jobs cycle-step-ms cook-config pool-schedulers-config nil)
+        out-trace-b (simulate hosts jobs cycle-step-ms cook-config pool-schedulers-config nil)]
     (is (> (count out-trace-a) 0))
     (is (> (count out-trace-b) 0))
     (is (traces-equivalent? out-trace-a out-trace-b)

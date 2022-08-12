@@ -28,23 +28,22 @@
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as kapi]
-            [cook.kubernetes.compute-cluster :as kcc]
-            [cook.log-structured :as log-structured]
             [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
-            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.offer :as offer]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
+            [cook.test.postgres]
             [cook.test.testutil :as testutil
-             :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
-                     init-agent-attributes-cache poll-until restore-fresh-database! setup wait-for]]
+             :refer [create-dummy-group create-dummy-instance create-dummy-job
+                     create-dummy-job-with-instances create-pool
+                     restore-fresh-database! setup wait-for]]
             [cook.tools :as tools]
             [criterium.core :as crit]
             [datomic.api :as d :refer [db q]]
@@ -2378,7 +2377,7 @@
                        {:pool/name "old pool"
                         :pool/state :pool.state/inactive}])
                     sched/make-fenzo-state (fn [_ _ _])
-                    sched/make-pool-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
+                    sched/make-pool-handler (fn [_ _ _ _ _ trigger-chan _ _ pool-name _ _]
                                               (tools/chime-at-ch
                                                trigger-chan
                                                (fn []

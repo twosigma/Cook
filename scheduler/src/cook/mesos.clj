@@ -30,10 +30,9 @@
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [cook.util :as util]
-            [datomic.api :as d :refer [q]]
+            [datomic.api :as d]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :refer [db]]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [plumbing.core :refer [map-from-keys]]
@@ -170,15 +169,15 @@
    rebalancer-config             -- map, config for rebalancer. See scheduler/docs/rebalancer-config.adoc for details
    progress-config               -- map, config for progress publishing. See scheduler/docs/configuration.adoc
    framework-id                  -- str, the Mesos framework id from the cook settings
-   fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
+   fenzo-config                  -- map, config for fenzo globally, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object
    api-only?                     -- bool, true if this instance should not actually join the leader selection"
   [{:keys [curator-framework fenzo-config mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult
            mesos-heartbeat-chan leadership-atom pool-name->pending-jobs-atom mesos-run-as-user
            offer-incubate-time-ms optimizer-config rebalancer-config server-config task-constraints trigger-chans
            zk-prefix api-only?]}]
-  (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
-                fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
+  (let [
+        {:keys [fenzo-fitness-calculator good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
@@ -211,10 +210,6 @@
                                       {:conn mesos-datomic-conn
                                        :cluster-name->compute-cluster-atom cook.compute-cluster/cluster-name->compute-cluster-atom
                                        :fenzo-fitness-calculator fenzo-fitness-calculator
-                                       :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                       :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                       :fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                       :fenzo-scaleback fenzo-scaleback
                                        :good-enough-fitness good-enough-fitness
                                        :mea-culpa-failure-limit mea-culpa-failure-limit
                                        :mesos-run-as-user mesos-run-as-user

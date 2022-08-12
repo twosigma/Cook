@@ -6,10 +6,12 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.mesos.mesos-mock :as mm]
-            [cook.test.postgres]
             [cook.scheduler.share :as share]
-            [cook.test.testutil :refer [create-dummy-job poll-until restore-fresh-database! setup]]
-            [cook.test.zz-simulator :refer [dump-jobs-to-csv pull-all-task-ents with-cook-scheduler]]
+            [cook.test.postgres]
+            [cook.test.testutil :refer [create-dummy-job poll-until
+                                        restore-fresh-database! setup]]
+            [cook.test.zz-simulator :refer [dump-jobs-to-csv
+                                            pull-all-task-ents with-cook-scheduler]]
             [cook.util :as util]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
@@ -678,7 +680,7 @@
           make-mesos-driver-fn (fn [config scheduler framework-id] ;; _ is framework-id
                                  (mm/mesos-mock hosts offer-trigger-chan scheduler))]
       (with-cook-scheduler
-        mesos-datomic-conn make-mesos-driver-fn {} true
+        mesos-datomic-conn make-mesos-driver-fn {} true []
         (share/set-share! mesos-datomic-conn "default" nil "new cluster settings"
                           :mem mem :cpus cpus :gpus 1.0)
         ;; Note these two vars are lazy, need to realize to put them in db.
