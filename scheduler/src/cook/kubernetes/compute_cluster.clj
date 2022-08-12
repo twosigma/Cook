@@ -109,6 +109,7 @@
 
     (log-structured/info "Generating offers"
                          {:compute-cluster compute-cluster-name
+                          :pool pool-name
                           :number-nodes-not-schedulable (- number-nodes-total number-nodes-schedulable)
                           :number-nodes-schedulable number-nodes-schedulable
                           :number-nodes-total number-nodes-total

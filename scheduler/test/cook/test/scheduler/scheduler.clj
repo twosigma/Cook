@@ -2378,12 +2378,12 @@
                        {:pool/name "old pool"
                         :pool/state :pool.state/inactive}])
                     sched/make-fenzo-state (fn [_ _ _])
-                    sched/make-offer-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
-                                               (tools/chime-at-ch
-                                                 trigger-chan
-                                                 (fn []
-                                                   (swap! output-atom conj pool-name)
-                                                   (async/>!! send-next-chime-chan :next))))
+                    sched/make-pool-handler (fn [_ _ _ _ _ _ _ _ trigger-chan _ _ pool-name _ _]
+                                              (tools/chime-at-ch
+                                               trigger-chan
+                                               (fn []
+                                                 (swap! output-atom conj pool-name)
+                                                 (async/>!! send-next-chime-chan :next))))
                     sched/start-jobs-prioritizer! (fn [_ _ _ _])
                     sched/prepare-match-trigger-chan (fn [_ _])]
         (sched/create-datomic-scheduler {:trigger-chans {:match-trigger-chan match-trigger-chan}})
@@ -2509,36 +2509,36 @@
     (is (= [compute-cluster-1
             compute-cluster-3]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint true
-              :job/instance instances}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3])))
+            {:job/checkpoint true
+             :job/instance instances}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3])))
     (is (= [compute-cluster-2]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint true
+            {:job/checkpoint true
               :job/instance [instance-first]}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3])))
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3])))
     (is (= [compute-cluster-1
             compute-cluster-2
             compute-cluster-3]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint true
-              :job/instance []}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3])))
+            {:job/checkpoint true
+             :job/instance []}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3])))
     (is (= [compute-cluster-1
             compute-cluster-2
             compute-cluster-3]
            (sched/job->acceptable-compute-clusters
-             {:job/checkpoint false
-              :job/instance instances}
-             [compute-cluster-1
-              compute-cluster-2
-              compute-cluster-3]))))
+            {:job/checkpoint false
+             :job/instance instances}
+            [compute-cluster-1
+             compute-cluster-2
+             compute-cluster-3]))))
 
   (deftest test-distribute-jobs-to-compute-clusters
     (testutil/setup)
@@ -2552,26 +2552,26 @@
             job1 (assoc base-job :job/uuid uuid)]
         (is (= (list [job1])
                (vals (sched/distribute-jobs-to-compute-clusters
-                       [job1]
-                       "test-pool"
-                       [compute-cluster-1
-                        compute-cluster-2
-                        compute-cluster-3]
-                       sched/job->acceptable-compute-clusters)))))
+                      [job1]
+                      "test-pool"
+                      [compute-cluster-1
+                       compute-cluster-2
+                       compute-cluster-3]
+                      sched/job->acceptable-compute-clusters)))))
       (testing "max-jobs-for-autoscaling=0"
         (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
           (is (= {}
                  (sched/distribute-jobs-to-compute-clusters
-                   []
-                   "test-pool"
-                   [compute-cluster-1
-                    compute-cluster-2
-                    compute-cluster-3]
-                   sched/job->acceptable-compute-clusters)))))
+                  []
+                  "test-pool"
+                  [compute-cluster-1
+                   compute-cluster-2
+                   compute-cluster-3]
+                  sched/job->acceptable-compute-clusters)))))
       (let [job (assoc base-job :job/uuid (UUID/randomUUID))]
         (is (= {}
                (sched/distribute-jobs-to-compute-clusters
-                 [(assoc job :job/uuid (UUID/randomUUID))]
-                 "test-pool"
-                 [compute-cluster-2]
+                [(assoc job :job/uuid (UUID/randomUUID))]
+                "test-pool"
+                [compute-cluster-2]
                  sched/job->acceptable-compute-clusters)))))))
