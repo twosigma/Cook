@@ -168,7 +168,8 @@
                    :compute-cluster compute-cluster
                    :reject-after-match-attempt true
                    ; TODO: add a timer here when we add it to mesos as well
-                   :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))}))))))
+                   :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))
+                   :offer-match-timer-prom-stop-fn (prom/start-timer prom/offer-match-timer {:compute-cluster compute-cluster-name})}))))))
 
 (defn taskids-to-scan
   "Determine all task ids to scan by union-ing task id's from cook expected state and existing task id maps. "

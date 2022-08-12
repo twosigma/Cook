@@ -30,6 +30,7 @@
              (controller/container-status->failure-reason {:name "test-cluster"} "12345"
                                                           pod-status container-status))))))
 (deftest test-process
+  (tu/setup)
   (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
                 d/db (constantly nil)
                 cached-queries/job-uuid->job-map-cache-lookup (constantly {:job/name "sample-name"
@@ -66,7 +67,9 @@
                                           cook-expected-state-map
                                           (atom {name {:cook-expected-state cook-expected-state
                                                        :launch-pod {:pod pod}
-                                                       :waiting-metric-timer (timers/start (timers/timer "fake-timer-name"))}})]
+                                                       :waiting-metric-timer (timers/start (timers/timer "fake-timer-name"))
+                                                       ; We just want a function that does nothing here to test that the value is set/removed appropriately
+                                                       :waiting-metric-timer-prom-stop-fn (fn [] (do))}})]
                                       (controller/process
                                         {:api-client nil
                                          :cook-expected-state-map cook-expected-state-map
@@ -174,7 +177,9 @@
 
       (testing "Make sure we remove the waiting metric at the right time"
         (is (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :pod/waiting))))
-        (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing))))))
+        (is (nil? (:waiting-metric-timer-prom-stop-fn (do-process-full-state :cook-expected-state/starting :pod/waiting))))
+        (is (not (nil? (:waiting-metric-timer (do-process-full-state :cook-expected-state/starting :missing)))))
+        (is (not (nil? (:waiting-metric-timer-prom-stop-fn (do-process-full-state :cook-expected-state/starting :missing))))))
 
       (is (nil? (do-process :missing :missing)))
       (testing "(:missing, :pod/deleting)"
@@ -267,6 +272,7 @@
       (is (= 1 @count-delete-pod)))))
 
 (deftest test-handle-pod-completed
+  (tu/setup)
   (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
                 d/db (constantly nil)
                 cached-queries/job-uuid->job-map-cache-lookup (constantly {:job/name "sample-name"

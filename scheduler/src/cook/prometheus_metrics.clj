@@ -60,6 +60,7 @@
    :gpus :cook/scheduler-users-gpu-count
    :launch-rate-saved :cook/scheduler-users-launch-rate-saved
    :launch-rate-per-minute :cook/scheduler-users-launch-rate-per-minute})
+
 ;; Kubernetes metrics
 (def total-pods :cook/scheduler-kubernetes-pods-count)
 (def max-pods :cook/scheduler-kubernetes-max-pods)
@@ -84,6 +85,17 @@
 (def compute-pending-offers-duration :cook/scheduler-kubernetes-compute-pending-offers-duration-seconds)
 (def autoscale-duration :cook/scheduler-kubernetes-autoscale-duration-seconds)
 (def launch-synthetic-tasks-duration :cook/scheduler-kubernetes-launch-synthetic-tasks-duration-seconds)
+(def pods-processed-unforced :cook/scheduler-kubernetes-pods-processed-unforced-count)
+(def process-lock-duration :cook/scheduler-kubernetes-process-lock-duration-seconds)
+(def process-lock-acquire-duration :cook/scheduler-kubernetes-process-lock-acquire-duration-seconds)
+(def controller-process-duration :cook/scheduler-kubernetes-controller-process-duration-seconds)
+(def handle-pod-update-duration :cook/scheduler-kubernetes-handle-pod-update-duration-seconds)
+(def handle-pod-deletion-duration :cook/scheduler-kubernetes-handle-pod-deletion-duration-seconds)
+(def update-cook-expected-state-duration :cook/scheduler-kubernetes-update-cook-expected-state-duration-seconds)
+(def scan-process-duration :cook/scheduler-kubernetes-scan-process-pod-duration-seconds)
+(def pod-waiting-duration :cook/scheduler-kubernetes-pod-duration-until-waiting-seconds)
+(def pod-running-duration :cook/scheduler-kubernetes-pod-duration-until-running-seconds)
+(def offer-match-timer :cook/scheduler-kubernetes-offer-match-duration-seconds)
 
 (defn create-registry
   []
@@ -283,13 +295,54 @@
       (prometheus/summary launch-synthetic-tasks-duration
                           {:description "Latency distribution of launching synthetic tasks"
                            :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/counter pods-processed-unforced
+                          {:description "Count of processed pods"
+                           :labels [:compute-cluster]})
+      (prometheus/summary process-lock-duration
+                          {:description "Latency distribution of processing an event while holding the process lock"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary process-lock-acquire-duration
+                          {:description "Latency distribution of acquiring the process lock"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary controller-process-duration
+                          {:description "Latency distribution of processing a pod event"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary handle-pod-update-duration
+                          {:description "Latency distribution of handling a pod update"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary handle-pod-deletion-duration
+                          {:description "Latency distribution of handling a pod deletion"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary update-cook-expected-state-duration
+                          {:description "Latency distribution of updating cook's expected state"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scan-process-duration
+                          {:description "Latency distribution of scanning for and processing a pod"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary pod-waiting-duration
+                          {:description "Latency distribution of the time until a pod is waiting"
+                           :labels [:compute-cluster :synthetic]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary pod-running-duration
+                          {:description "Latency distribution of the time until a pod is running"
+                           :labels [:compute-cluster :synthetic]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary offer-match-timer
+                          {:description "Latency distribution of matching an offer"
+                           :labels [:compute-cluster]
                            :quantiles default-summary-quantiles}))))
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
 (mount/defstate registry :start (create-registry))
-
-()
 
 (defmacro with-duration
   "Wraps the given block and records its execution time to the collector with the given name.

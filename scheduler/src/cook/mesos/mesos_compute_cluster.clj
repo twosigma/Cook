@@ -35,7 +35,8 @@
             [metrics.counters :as counters]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :as pc])
+            [plumbing.core :as pc]
+            [cook.prometheus-metrics :as prom])
   (:import (java.net URLEncoder)
            (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.mesos Protos$TaskStatus$Reason)))
@@ -164,7 +165,8 @@
         [this driver raw-offers]
         (log/debug "Got offers:" raw-offers)
         (let [offers (map #(assoc % :compute-cluster compute-cluster
-                                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster))))
+                                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster)))
+                                    :offer-match-timer-prom-stop-fn (prom/start-timer prom/offer-match-timer {:compute-cluster compute-cluster}))
                           raw-offers)
               pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]
