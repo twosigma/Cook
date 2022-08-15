@@ -1813,7 +1813,7 @@
                            :compute-cluster compute-cluster
                            :offer-match-timer (timers/start (timers/timer "noop-timer-offer"))
                            ; We just want a no-op function here
-                           :offer-match-timer-prom-stop-fn (fn [] (do))})
+                           :offer-match-timer-prom-stop-fn (fn [] (constantly nil))})
       offers-chan (async/chan (async/buffer 10))
       run-handle-resource-offers! (fn [num-considerable offers pool & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
                                                                        :or {rebalancer-reservation-atom (atom {})

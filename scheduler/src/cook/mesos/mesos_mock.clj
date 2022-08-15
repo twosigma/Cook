@@ -438,7 +438,7 @@
                                           (->>
                                             (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers))
                                             (map #(assoc % :offer-match-timer (timers/start (timers/timer "mock-mesos"))
-                                                           :offer-match-timer-prom-stop-fn (fn [] (do))))))
+                                                           :offer-match-timer-prom-stop-fn (fn [] (constantly nil))))))
                                         (tools/close-when-ch! v)
                                         state')
                    complete-trigger-chan (let [state' (complete-tasks! (assoc state :now (t/now)) scheduler driver)]

@@ -8,10 +8,10 @@
             [cook.kubernetes.metrics :as metrics]
             [cook.mesos.sandbox :as sandbox]
             [cook.passport :as passport]
+            [cook.prometheus-metrics :as prom]
             [cook.scheduler.scheduler :as scheduler]
             [metrics.meters :as meters]
-            [metrics.timers :as timers]
-            [cook.prometheus-metrics :as prom])
+            [metrics.timers :as timers])
   (:import (clojure.lang IAtom)
            (com.twosigma.cook.kubernetes FinalizerHelper)
            (io.kubernetes.client.openapi.models V1ContainerStatus V1ObjectMeta V1Pod V1PodStatus)
@@ -714,9 +714,8 @@
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
        (when-not force-process?
-         (do
            (prom/inc prom/pods-processed-unforced {:compute-cluster name})
-           (meters/mark! (metrics/meter "pods-processed-unforced" name))))
+           (meters/mark! (metrics/meter "pods-processed-unforced" name)))
        (try
          (process compute-cluster pod-name doing-scan?)
          (catch Exception e

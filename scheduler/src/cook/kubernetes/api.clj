@@ -430,9 +430,8 @@
               (prom/set prom/total-pods {:compute-cluster compute-cluster-name} (-> @all-pods-atom keys count))
               (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
               (when max-total-pods
-                (do
                   (prom/set prom/max-pods {:compute-cluster compute-cluster-name} max-total-pods)
-                  (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name))))
+                  (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
             compute-cluster-name
             :pod)
           (catch Exception e
@@ -547,9 +546,8 @@
               (prom/set prom/total-nodes {:compute-cluster compute-cluster-name} (-> @current-nodes-atom keys count))
               (set-metric-counter "total-nodes"  (-> @current-nodes-atom keys count) compute-cluster-name)
               (when max-total-nodes
-                (do
                   (prom/set prom/max-nodes {:compute-cluster compute-cluster-name} max-total-nodes)
-                  (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name))))
+                  (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
             compute-cluster-name
             :node)
           (catch Exception e

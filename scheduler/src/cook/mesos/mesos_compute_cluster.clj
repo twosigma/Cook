@@ -28,6 +28,7 @@
             [cook.plugins.pool :as pool-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.prometheus-metrics :as prom]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [datomic.api :as d]
@@ -35,8 +36,7 @@
             [metrics.counters :as counters]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]
-            [cook.prometheus-metrics :as prom])
+            [plumbing.core :as pc])
   (:import (java.net URLEncoder)
            (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.mesos Protos$TaskStatus$Reason)))
