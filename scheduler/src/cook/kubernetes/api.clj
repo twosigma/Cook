@@ -2111,24 +2111,24 @@
                 (case code
                   404
                   (do
-                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :expected})
+                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type "expected"})
                     (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
                     (log-structured/info "Not Found error deleting finalizer for pod"
                                          {:pod-name pod-name :compute-cluster compute-cluster-name}))
                   422
                   (do
-                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :expected})
+                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type "expected"})
                     (meters/mark! (metrics/meter "delete-finalizer-expected-errors" compute-cluster-name))
                     (log-structured/info "Unprocessable Entity error deleting finalizer for pod"
                                          {:pod-name pod-name :compute-cluster compute-cluster-name}))
                   (do
-                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :unexpected})
+                    (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type "unexpected"})
                     (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
                     (log-structured/error "Error deleting finalizer for pod"
                                           {:pod-name pod-name :compute-cluster compute-cluster-name}
                                           e)))))
             (catch Exception e
-              (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type :unexpected})
+              (prom/inc prom/delete-finalizer-errors {:compute-cluster compute-cluster-name :type "unexpected"})
               (meters/mark! (metrics/meter "delete-finalizer-unexpected-errors" compute-cluster-name))
               (log-structured/error "Error deleting finalizer for pod"
                                     {:pod-name pod-name :compute-cluster compute-cluster-name}

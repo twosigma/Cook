@@ -72,7 +72,7 @@
 (def watch-gap :cook/scheduler-kubernetes-watch-gap-millis)
 (def disconnected-watch-gap :cook/scheduler-kubernetes-disconnected-watch-gap-millis)
 (def delete-pod-errors :cook/scheduler-kubernetes-delete-pod-errors-count)
-(def delete-finalizer-errors :cook/scheduler-kubernetes-delete-finalizer-expected-errors-count)
+(def delete-finalizer-errors :cook/scheduler-kubernetes-delete-finalizer-errors-count)
 (def launch-pod-errors :cook/scheduler-launch-pod-errors-count)
 (def list-pods-chunk-duration :cook/scheduler-kubernetes-list-pods-chunk-duration-seconds)
 (def list-pods-duration :cook/scheduler-kubernetes-list-pods-duration-seconds)
