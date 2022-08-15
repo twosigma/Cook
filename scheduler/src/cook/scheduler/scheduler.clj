@@ -983,7 +983,8 @@
                 (let [_ (log-structured/info "Launching matched tasks for compute cluster"
                                              {:pool pool-name :compute-cluster compute-cluster-name})]
                   (doseq [match matches]
-                    (timers/stop (-> match :leases first :offer :offer-match-timer)))
+                    (timers/stop (-> match :leases first :offer :offer-match-timer))
+                    (-> match :leases first :offer :offer-match-timer-prom-stop-fn))
                   (#(launch-matches! compute-cluster pool-name matches fenzo)))))
             (finally
               (.. kill-lock-object readLock unlock))))))))

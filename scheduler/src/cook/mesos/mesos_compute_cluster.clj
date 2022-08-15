@@ -28,6 +28,7 @@
             [cook.plugins.pool :as pool-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
+            [cook.prometheus-metrics :as prom]
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [datomic.api :as d]
@@ -164,7 +165,8 @@
         [this driver raw-offers]
         (log/debug "Got offers:" raw-offers)
         (let [offers (map #(assoc % :compute-cluster compute-cluster
-                                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster))))
+                                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" (cc/compute-cluster-name compute-cluster)))
+                                    :offer-match-timer-prom-stop-fn (prom/start-timer prom/offer-match-timer {:compute-cluster compute-cluster}))
                           raw-offers)
               pool->offers (group-by (fn [o] (plugins/select-pool pool-plugin/plugin o)) offers)
               using-pools? (config/default-pool)]

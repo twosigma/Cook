@@ -60,9 +60,42 @@
    :gpus :cook/scheduler-users-gpu-count
    :launch-rate-saved :cook/scheduler-users-launch-rate-saved
    :launch-rate-per-minute :cook/scheduler-users-launch-rate-per-minute})
+
+;; Kubernetes metrics
+(def total-pods :cook/scheduler-kubernetes-pods-count)
+(def max-pods :cook/scheduler-kubernetes-max-pods)
 (def total-synthetic-pods :cook/scheduler-kubernetes-synthetic-pods-count)
 (def max-synthetic-pods :cook/scheduler-kubernethes-max-synthetic-pods)
-
+(def synthetic-pods-submitted :cook/scheduler-kubernetes-synthetic-pods-submitted-count)
+(def total-nodes :cook/scheduler-kubernetes-nodes-count)
+(def max-nodes :cook/scheduler-kubernetes-max-nodes)
+(def watch-gap :cook/scheduler-kubernetes-watch-gap-millis)
+(def disconnected-watch-gap :cook/scheduler-kubernetes-disconnected-watch-gap-millis)
+(def delete-pod-errors :cook/scheduler-kubernetes-delete-pod-errors-count)
+(def delete-finalizer-errors :cook/scheduler-kubernetes-delete-finalizer-errors-count)
+(def launch-pod-errors :cook/scheduler-launch-pod-errors-count)
+(def list-pods-chunk-duration :cook/scheduler-kubernetes-list-pods-chunk-duration-seconds)
+(def list-pods-duration :cook/scheduler-kubernetes-list-pods-duration-seconds)
+(def list-nodes-duration :cook/scheduler-kubernetes-list-nodes-duration-seconds)
+(def delete-pod-duration :cook/scheduler-kubernetes-delete-pod-duration-seconds)
+(def delete-finalizer-duration :cook/scheduler-kubernetes-delete-finalizer-duration-seconds)
+(def launch-pod-duration :cook/scheduler-kubernetes-launch-pod-duration-seconds)
+(def launch-task-duration :cook/scheduler-kubernetes-launch-task-duration-seconds)
+(def kill-task-duration :cook/scheduler-kubernetes-kill-task-duration-seconds)
+(def compute-pending-offers-duration :cook/scheduler-kubernetes-compute-pending-offers-duration-seconds)
+(def autoscale-duration :cook/scheduler-kubernetes-autoscale-duration-seconds)
+(def launch-synthetic-tasks-duration :cook/scheduler-kubernetes-launch-synthetic-tasks-duration-seconds)
+(def pods-processed-unforced :cook/scheduler-kubernetes-pods-processed-unforced-count)
+(def process-lock-duration :cook/scheduler-kubernetes-process-lock-duration-seconds)
+(def process-lock-acquire-duration :cook/scheduler-kubernetes-process-lock-acquire-duration-seconds)
+(def controller-process-duration :cook/scheduler-kubernetes-controller-process-duration-seconds)
+(def handle-pod-update-duration :cook/scheduler-kubernetes-handle-pod-update-duration-seconds)
+(def handle-pod-deletion-duration :cook/scheduler-kubernetes-handle-pod-deletion-duration-seconds)
+(def update-cook-expected-state-duration :cook/scheduler-kubernetes-update-cook-expected-state-duration-seconds)
+(def scan-process-duration :cook/scheduler-kubernetes-scan-process-pod-duration-seconds)
+(def pod-waiting-duration :cook/scheduler-kubernetes-pod-duration-until-waiting-seconds)
+(def pod-running-duration :cook/scheduler-kubernetes-pod-duration-until-running-seconds)
+(def offer-match-timer :cook/scheduler-kubernetes-offer-match-duration-seconds)
 
 (defn create-registry
   []
@@ -180,15 +213,132 @@
       (prometheus/gauge user-state-count
                         {:description "Current user count by state"
                          :labels [:pool :state]})
-      ;; Resource usage stats -----------------------------------------------------------------------------------
-
-      ;; Other metrics -------------------------------------------------------------------------------------------
+      ;; Kubernetes metrics -------------------------------------------------------------------------------------
+      (prometheus/gauge total-pods
+                        {:description "Total current number of pods per compute cluster"
+                         :labels [:pool]})
+      (prometheus/gauge max-pods
+                        {:description "Max number of pods per compute cluster"
+                         :labels [:pool]})
       (prometheus/gauge total-synthetic-pods
                         {:description "Total current number of synthetic pods per pool and compute cluster"
                          :labels [:pool :compute-cluster]})
       (prometheus/gauge max-synthetic-pods
                         {:description "Max number of synthetic pods per pool and compute cluster"
-                         :labels [:pool :compute-cluster]}))))
+                         :labels [:pool :compute-cluster]})
+      (prometheus/gauge synthetic-pods-submitted
+                        {:description "Count of synthetic pods submitted in the last match cycle"
+                         :labels [:compute-cluster]})
+      (prometheus/gauge total-nodes
+                        {:description "Total current number of nodes per compute cluster"
+                         :labels [:pool]})
+      (prometheus/gauge max-nodes
+                        {:description "Max number of nodes per compute cluster"
+                         :labels [:pool]})
+      (prometheus/summary watch-gap
+                          {:description "Latency distribution of the gap between last watch response and current response"
+                           :labels [:compute-cluster :object]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary disconnected-watch-gap
+                          {:description "Latency distribution of the gap between last watch response and current response after reconnecting"
+                           :labels [:compute-cluster :object]
+                           :quantiles default-summary-quantiles})
+      (prometheus/counter delete-pod-errors
+                          {:description "Total number of errors when deleting pods"
+                           :labels [:compute-cluster]})
+      (prometheus/counter delete-finalizer-errors
+                          {:description "Total number of errors when deleting pod finalizers"
+                           :labels [:compute-cluster :type]})
+      (prometheus/counter launch-pod-errors
+                          {:description "Total number of errors when launching pods"
+                           :labels [:compute-cluster :bad-spec]})
+      (prometheus/summary list-pods-chunk-duration
+                          {:description "Latency distribution of listing a chunk of pods"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary list-pods-duration
+                          {:description "Latency distribution of listing all pods"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary list-nodes-duration
+                          {:description "Latency distribution of listing all nodes"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary delete-pod-duration
+                          {:description "Latency distribution of deleting a pod"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary delete-finalizer-duration
+                          {:description "Latency distribution of deleting a pod's finalizer"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary launch-pod-duration
+                          {:description "Latency distribution of launching a pod"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary launch-task-duration
+                          {:description "Latency distribution of launching a task (more inclusive than launch-pod)"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary kill-task-duration
+                          {:description "Latency distribution of killing a task (more inclusive than delete-pod)"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary compute-pending-offers-duration
+                          {:description "Latency distribution of computing pending offers"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary autoscale-duration
+                          {:description "Latency distribution of autoscaling"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary launch-synthetic-tasks-duration
+                          {:description "Latency distribution of launching synthetic tasks"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/counter pods-processed-unforced
+                          {:description "Count of processed pods"
+                           :labels [:compute-cluster]})
+      (prometheus/summary process-lock-duration
+                          {:description "Latency distribution of processing an event while holding the process lock"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary process-lock-acquire-duration
+                          {:description "Latency distribution of acquiring the process lock"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary controller-process-duration
+                          {:description "Latency distribution of processing a pod event"
+                           :labels [:compute-cluster :doing-scan]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary handle-pod-update-duration
+                          {:description "Latency distribution of handling a pod update"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary handle-pod-deletion-duration
+                          {:description "Latency distribution of handling a pod deletion"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary update-cook-expected-state-duration
+                          {:description "Latency distribution of updating cook's expected state"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary scan-process-duration
+                          {:description "Latency distribution of scanning for and processing a pod"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary pod-waiting-duration
+                          {:description "Latency distribution of the time until a pod is waiting"
+                           :labels [:compute-cluster :synthetic]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary pod-running-duration
+                          {:description "Latency distribution of the time until a pod is running"
+                           :labels [:compute-cluster :synthetic]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary offer-match-timer
+                          {:description "Latency distribution of matching an offer"
+                           :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles}))))
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
@@ -201,6 +351,15 @@
   [name labels & body]
   `(prometheus/with-duration (registry ~name ~labels) ~@body))
 
+(defmacro start-timer
+  "Starts a timer that, when stopped, will store the duration in the given metric.
+  The return value will be a function that should be called once the operation to time has run."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/start-timer registry ~name))
+  ([name labels]
+   `(prometheus/start-timer registry ~name ~labels)))
+
 (defmacro set
   "Sets the value of the given metric."
   {:arglists '([name amount] [name labels amount])}
@@ -210,12 +369,20 @@
    `(prometheus/set registry ~name ~labels ~amount)))
 
 (defmacro inc
-  "Sets the value of the given metric."
+  "Increments the value of the given metric."
   {:arglists '([name] [name labels])}
   ([name]
    `(prometheus/inc registry ~name))
   ([name labels]
    `(prometheus/inc registry ~name ~labels)))
+
+(defmacro observe
+  "Records the value for the given metric (for histograms and summaries)."
+  {:arglists '([name amount] [name labels amount])}
+  ([name amount]
+   `(prometheus/observe registry ~name ~amount))
+  ([name labels amount]
+   `(prometheus/observe registry ~name ~labels ~amount)))
 
 (defn export []
   "Returns the current values of all registered metrics in plain text format."
