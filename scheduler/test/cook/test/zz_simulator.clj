@@ -79,14 +79,14 @@
                                 :max-preemption 100.0
                                 :pool-regex ".*"})
 
-(def default-pool-config [{:pool-regex ".*"
-                           :scheduler-config {:scheduler "fenzo"
-                                              :good-enough-fitness 1.0
-                                              :fenzo-fitness-calculator default-fitness-calculator
-                                              :fenzo-max-jobs-considered 2000
-                                              :fenzo-scaleback 0.95
-                                              :fenzo-floor-iterations-before-warn 10
-                                              :fenzo-floor-iterations-before-reset 1000}}])
+(def default-schedulers-config [{:pool-regex ".*"
+                                 :scheduler-config {:scheduler "fenzo"
+                                                    :good-enough-fitness 1.0
+                                                    :fenzo-fitness-calculator default-fitness-calculator
+                                                    :fenzo-max-jobs-considered 2000
+                                                    :fenzo-scaleback 0.95
+                                                    :fenzo-floor-iterations-before-warn 10
+                                                    :fenzo-floor-iterations-before-reset 1000}}])
 
 (def default-task-constraints {:timeout-hours 1
                                :timeout-interval-minutes 1
@@ -95,7 +95,7 @@
                                :retry-limit 5})
 
 (defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn scheduler-config trigger-matching? pool-schedulers-config & body]
+  [conn make-mesos-driver-fn scheduler-config trigger-matching? schedulers-config & body]
   `(let [conn# ~conn
          [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
@@ -165,9 +165,9 @@
                                                         (when
                                                           ~trigger-matching?
                                                           (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))
-                     pool-schedulers (constantly (if (empty? ~pool-schedulers-config)
-                                                          default-pool-config
-                                                          ~pool-schedulers-config))]
+                     pool-schedulers (constantly (if (empty? ~schedulers-config)
+                                                          default-schedulers-config
+                                                          ~schedulers-config))]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
@@ -359,7 +359,7 @@
    The start simulation time is the min submit time in the trace.
 
    Returns a list of the task entities run"
-  [mesos-hosts trace cycle-step-ms config pool-schedulers-config temp-out-trace-file]
+  [mesos-hosts trace cycle-step-ms config schedulers-config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
@@ -428,7 +428,7 @@
       make-mesos-driver-fn
       scheduler-config
       false
-      pool-schedulers-config
+      schedulers-config
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
           (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))
@@ -743,16 +743,16 @@
         cycle-step-ms 30000
         config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
                 :scheduler-config {:rebalancer-config {:max-preemption 1.0}}}
-        pool-schedulers-config [{:pool-regex ".*"
-                                 :scheduler-config {:scheduler "fenzo"
-                                                    :good-enough-fitness 1.0
-                                                    :fenzo-fitness-calculator default-fitness-calculator
-                                                    :fenzo-max-jobs-considered 200
-                                                    :fenzo-scaleback 0.95
-                                                    :fenzo-floor-iterations-before-warn 10
-                                                    :fenzo-floor-iterations-before-reset 1000}}]
-        out-trace-a (simulate hosts jobs cycle-step-ms config pool-schedulers-config nil)
-        out-trace-b (simulate hosts jobs cycle-step-ms config pool-schedulers-config nil)]
+        schedulers-config [{:pool-regex ".*"
+                            :scheduler-config {:scheduler "fenzo"
+                                               :good-enough-fitness 1.0
+                                               :fenzo-fitness-calculator default-fitness-calculator
+                                               :fenzo-max-jobs-considered 200
+                                               :fenzo-scaleback 0.95
+                                               :fenzo-floor-iterations-before-warn 10
+                                               :fenzo-floor-iterations-before-reset 1000}}]
+        out-trace-a (simulate hosts jobs cycle-step-ms config schedulers-config nil)
+        out-trace-b (simulate hosts jobs cycle-step-ms config schedulers-config nil)]
     (is (> (count out-trace-a) 0))
     (is (> (count out-trace-b) 0))
     (is (traces-equivalent? out-trace-a out-trace-b)

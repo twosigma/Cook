@@ -2180,9 +2180,9 @@
                  [{:pool/name "no-pool"}])
         pool->scheduler-config (pool-map pools' (fn [{:keys [pool/name]}]
                                                  (pool-scheduler-config (config/pool-schedulers) name)))
-        pool-name->fenzo-state (pool-map pools' (fn [{:keys [pool/name]}] (make-fenzo-state offer-incubate-time-ms
-                                                                          (:fenzo-fitness-calculator (get pool->scheduler-config name))
-                                                                          (:good-enough-fitness (get pool->scheduler-config name)))))
+        pool-name->fenzo-state (pool-map pools' (fn [{:keys [pool/name]}]
+                                                  (let [{:keys [fenzo-fitness-calculator good-enough-fitness]} (pool->scheduler-config name)]
+                                                    (make-fenzo-state offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness))))
         pool->match-trigger-chan (pool-map pools' (fn [_] (async/chan (async/sliding-buffer 1))))
         pool-names-linked-list (LinkedList. (map :pool/name pools'))
         job->acceptable-compute-clusters-fn
@@ -2196,7 +2196,7 @@
                                 (make-pool-handler
                                  conn (get pool-name->fenzo-state name)
                                  pool-name->pending-jobs-atom agent-attributes-cache
-                                 (get pool->scheduler-config name) (get pool->match-trigger-chan name)
+                                 (pool->scheduler-config name) (pool->match-trigger-chan name)
                                  rebalancer-reservation-atom mesos-run-as-user name
                                  cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
     (prepare-match-trigger-chan match-trigger-chan pools')
