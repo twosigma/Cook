@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.scheduler
-  (:require [chime :refer [chime-ch]]
+  (:require [chime :refer [chime-at chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
             [clojure.core.async :as async]
@@ -24,8 +24,8 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
-            [cook.cache :as ccache]
             [cook.cached-queries :as cached-queries]
+            [cook.cache :as ccache]
             [cook.caches :as caches]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
@@ -66,7 +66,7 @@
              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder VirtualMachineCurrentState
              VirtualMachineLease SchedulingResult VMAssignmentResult)
            (com.netflix.fenzo.functions Action1 Action2 Func1)
-           (java.util Date LinkedList)))
+           (java.util LinkedList Date)))
 
 (defn now
   ^Date []

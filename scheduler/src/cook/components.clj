@@ -16,10 +16,11 @@
   (:gen-class)
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.pprint :refer [pprint]]
             [clojure.tools.logging :as log]
-            [compojure.core :refer [routes]]
+            [compojure.core :refer [context GET POST routes]]
             [compojure.route :as route]
-            [congestion.middleware :refer [wrap-rate-limit]]
+            [congestion.middleware :refer [ip-rate-limit wrap-rate-limit]]
             [congestion.storage :as storage]
             ; This explicit require is needed so that mount can see the defstate defined in the cook.caches namespace.
             [cook.caches]
@@ -48,6 +49,7 @@
             [cook.quota :as quota]
             [cook.rate-limit]
             [cook.rest.cors :as cors]
+            [cook.rest.impersonation :refer [impersonation-authorized-wrapper]]
             [cook.util :as util]
             [datomic.api :as d]
             [fork.metrics-clojure.metrics.jvm.core :as metrics-jvm]
@@ -58,7 +60,8 @@
             [ring.middleware.cookies :refer [wrap-cookies]]
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.stacktrace :refer [wrap-stacktrace]]
-            [ring.util.mime-type])
+            [ring.util.mime-type]
+            [ring.util.response :refer [response]])
   (:import (clojure.core.async.impl.channels ManyToManyChannel)
            (java.io IOException)
            (java.security Principal)
@@ -68,8 +71,8 @@
            (org.apache.curator.framework.state ConnectionStateListener)
            (org.apache.curator.retry BoundedExponentialBackoffRetry)
            (org.eclipse.jetty.security DefaultUserIdentity UserAuthentication)
-           (org.eclipse.jetty.server NCSARequestLog Request)
-           (org.eclipse.jetty.server.handler HandlerCollection RequestLogHandler)))
+           (org.eclipse.jetty.server.handler HandlerCollection RequestLogHandler)
+           (org.eclipse.jetty.server NCSARequestLog Request)))
 
 (defn wrap-no-cache
   [handler]

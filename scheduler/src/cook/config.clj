@@ -106,6 +106,13 @@
 
 (def default-authorization {:authorization-fn 'cook.rest.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
+(def default-fenzo-scheduler-config {:scheduler "fenzo"
+                                     :good-enough-fitness 0.8
+                                     :fenzo-fitness-calculator default-fitness-calculator
+                                     :fenzo-max-jobs-considered 1000
+                                     :fenzo-scaleback 0.95
+                                     :fenzo-floor-iterations-before-warn 10
+                                     :fenzo-floor-iterations-before-reset 1000})
 
 (defrecord UserRateLimit [id quota auth-bypass-quota ttl]
   RateLimit
@@ -456,13 +463,7 @@
                 (assoc :quotas [])
                 (not (:schedulers pools))
                 (assoc :schedulers [{:pool-regex ".*"
-                                     :scheduler-config {:scheduler "fenzo"
-                                                        :good-enough-fitness 0.8
-                                                        :fenzo-fitness-calculator default-fitness-calculator
-                                                        :fenzo-max-jobs-considered 1000
-                                                        :fenzo-scaleback 0.95
-                                                        :fenzo-floor-iterations-before-warn 10
-                                                        :fenzo-floor-iterations-before-reset 1000}}])))
+                                     :scheduler-config default-fenzo-scheduler-config}])))
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]

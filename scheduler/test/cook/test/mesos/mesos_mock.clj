@@ -6,12 +6,10 @@
             [clojure.tools.logging :as log]
             [cook.compute-cluster :as cc]
             [cook.mesos.mesos-mock :as mm]
-            [cook.scheduler.share :as share]
             [cook.test.postgres]
-            [cook.test.testutil :refer [create-dummy-job poll-until
-                                        restore-fresh-database! setup]]
-            [cook.test.zz-simulator :refer [dump-jobs-to-csv
-                                            pull-all-task-ents with-cook-scheduler]]
+            [cook.scheduler.share :as share]
+            [cook.test.testutil :refer [create-dummy-job poll-until restore-fresh-database! setup]]
+            [cook.test.zz-simulator :refer [dump-jobs-to-csv pull-all-task-ents with-cook-scheduler]]
             [cook.util :as util]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
