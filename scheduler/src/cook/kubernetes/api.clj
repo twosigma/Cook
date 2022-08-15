@@ -204,7 +204,7 @@
             metric-name (str (name watch-object-type) "-" metric-name)]
         (histograms/update!
           (metrics/histogram metric-name compute-cluster-name) millis)
-        (prom/observe prom-metric-name {:compute-cluster compute-cluster-name :object watch-object-type} millis)
+        (prom/observe prom-metric-name {:compute-cluster compute-cluster-name :object (name watch-object-type)} millis)
         (when log?
           (log-structured/info
             "Marked watch gap"
