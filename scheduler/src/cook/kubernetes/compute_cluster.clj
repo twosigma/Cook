@@ -303,7 +303,7 @@
   launches the task by pumping it into the k8s state machine"
   [{:keys [name namespace-config] :as compute-cluster} task-metadata]
   (let [timer-context (timers/start (metrics/timer "cc-launch-tasks" name))
-        prom-stop-fn (prom/start-timer prom/launch-task-duration {:compute-cluster compute-cluster})
+        prom-stop-fn (prom/start-timer prom/launch-task-duration {:compute-cluster name})
         pod-namespace (get-namespace-from-task-metadata namespace-config task-metadata)
         pod-name (:task-id task-metadata)
         ^V1Pod pod (api/task-metadata->pod pod-namespace compute-cluster task-metadata)
