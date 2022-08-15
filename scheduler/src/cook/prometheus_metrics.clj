@@ -309,7 +309,7 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary controller-process-duration
                           {:description "Latency distribution of processing a pod event"
-                           :labels [:compute-cluster]
+                           :labels [:compute-cluster :doing-scan]
                            :quantiles default-summary-quantiles})
       (prometheus/summary handle-pod-update-duration
                           {:description "Latency distribution of handling a pod update"

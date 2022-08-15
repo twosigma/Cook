@@ -383,7 +383,7 @@
 
 (defn handle-pod-started
   "A pod has started. So now we need to update the status in datomic."
-  [compute-cluster {:keys [running-metric-timer running-metric-timer-prom-fn]} pod-name]
+  [compute-cluster {:keys [running-metric-timer running-metric-timer-prom-stop-fn]} pod-name]
   (when-not (api/synthetic-pod? pod-name)
     (let [instance-id pod-name
           ; We leak mesos terminology here ('task') because of backward compatibility.
@@ -393,7 +393,7 @@
       (write-status-to-datomic compute-cluster status)))
   ; Track the time until running, if available.
   (when running-metric-timer (timers/stop running-metric-timer))
-  (when running-metric-timer-prom-fn (running-metric-timer-prom-fn))
+  (when running-metric-timer-prom-stop-fn (running-metric-timer-prom-stop-fn))
   ; At this point, we don't care about the launch pod or the metric timers, so toss their dictionary away.
   {:cook-expected-state :cook-expected-state/running})
 
@@ -461,7 +461,7 @@
   empty dictionary to indicate that the result should be deleted. NOTE: Must be invoked with the lock."
   [{:keys [api-client k8s-actual-state-map cook-expected-state-map cook-starting-pods name] :as compute-cluster} ^String pod-name doing-scan?]
   (prom/with-duration
-    prom/controller-process-duration {:compute-cluster name}
+    prom/controller-process-duration {:compute-cluster name :doing-scan (str doing-scan?)}
     (timers/time!
       (metrics/timer "controller-process" name)
       (loop [{:keys [cook-expected-state waiting-metric-timer waiting-metric-timer-prom-stop-fn] :as cook-expected-state-dict} (get @cook-expected-state-map pod-name)
