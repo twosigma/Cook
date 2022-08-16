@@ -1244,3 +1244,18 @@
             (is (contains? pod-labels "SAMPLE_DEFAULT_POD_LABEL_KEY"))
             ; test unmatched pool
             (is (not (contains? pod-labels "org.foo/application")))))))))
+
+(deftest test-num-pods-on-node
+  (with-redefs [api/pod->node-name :node-name]
+    (let [pods [{:pod 1 :node-name "a"}
+                {:pod 2 :node-name "a"}
+                {:pod 3 :node-name nil}
+                {:pod 4 :node-name nil}
+                {:pod 5 :node-name "c"}]]
+    (is (= 2 (api/num-pods-on-node "a" pods)))
+    (is (= 2 (api/num-pods-on-node nil pods)))
+    (is (= 1 (api/num-pods-on-node "c" pods)))
+    (is (= 0 (api/num-pods-on-node "d" pods)))
+    (is (= 0 (api/num-pods-on-node "a" {})))
+    (is (= 0 (api/num-pods-on-node nil {})))
+    (is (= 0 (api/num-pods-on-node "c" {}))))))
