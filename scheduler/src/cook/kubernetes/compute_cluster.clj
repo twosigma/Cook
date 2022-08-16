@@ -293,6 +293,14 @@
   (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
     (-> pods (merge starting-pods) vals)))
 
+(defn add-starting-pods-reverse
+  "Weird offshoot of add-starting-pods-reverse that is run when determining node capacity.
+  (We want to add the smaller set onto the bigger set. In this context, the bigger set is
+  the set of starting pods.)"
+  [compute-cluster pods]
+  (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
+    (vals (into starting-pods pods))))
+
 (defn synthetic-pod->job-uuid
   "If the given pod is a synthetic pod for autoscaling, returns the job uuid
   that the pod corresponds to (stored in a pod label). Otherwise, returns nil."
@@ -630,7 +638,7 @@
 
   (num-tasks-on-host [this hostname]
     (->> (get @node-name->pod-name->pod hostname {})
-         (add-starting-pods this)
+         (add-starting-pods-reverse this)
          (api/num-pods-on-node hostname)))
 
   (retrieve-sandbox-url-path
