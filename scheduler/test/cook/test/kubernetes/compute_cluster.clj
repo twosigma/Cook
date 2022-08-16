@@ -5,6 +5,7 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
+            [cook.kubernetes.controller :as controller]
             [cook.mesos.task :as task]
             [cook.test.postgres]
             [cook.scheduler.scheduler :as sched]
