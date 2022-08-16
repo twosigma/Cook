@@ -1339,6 +1339,11 @@
                         (swap! pool-name->pending-jobs-atom
                                remove-matched-jobs-from-pending-jobs
                                matched-job-uuids pool-name)
+                        ; Force this list to happen async.
+                        (let [number-to-force (get-in config/config [:settings :rank :number-to-force])]
+                          (->> (get @pool-name->pending-jobs-atom pool-name)
+                              (take number-to-force)
+                               doall))
                         (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
                                               {:pool pool-name})
                         (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
