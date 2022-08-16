@@ -17,7 +17,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :refer [keywordize-keys]]
             [com.rpl.specter :refer [ALL FIRST MAP-KEYS MAP-VALS select transform]]
-            [cook.config :refer [executor-config init-logger]]
+            [cook.config :refer [default-fitness-calculator executor-config init-logger pool-schedulers]]
             [cook.datomic :as datomic]
             [cook.mesos :as c]
             [cook.mesos.mesos-compute-cluster :as mcc]
@@ -79,11 +79,14 @@
                                 :max-preemption 100.0
                                 :pool-regex ".*"})
 
-(def default-fenzo-config {:fenzo-max-jobs-considered 2000
-                           :fenzo-scaleback 0.95
-                           :fenzo-floor-iterations-before-warn 10
-                           :fenzo-floor-iterations-before-reset 1000
-                           :good-enough-fitness 1.0})
+(def default-schedulers-config [{:pool-regex ".*"
+                                 :scheduler-config {:scheduler "fenzo"
+                                                    :good-enough-fitness 1.0
+                                                    :fenzo-fitness-calculator default-fitness-calculator
+                                                    :fenzo-max-jobs-considered 2000
+                                                    :fenzo-scaleback 0.95
+                                                    :fenzo-floor-iterations-before-warn 10
+                                                    :fenzo-floor-iterations-before-reset 1000}}])
 
 (def default-task-constraints {:timeout-hours 1
                                :timeout-interval-minutes 1
@@ -92,7 +95,7 @@
                                :retry-limit 5})
 
 (defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn scheduler-config trigger-matching? & body]
+  [conn make-mesos-driver-fn scheduler-config trigger-matching? schedulers-config & body]
   `(let [conn# ~conn
          [zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
@@ -126,7 +129,6 @@
          sandbox-syncer-state# {:task-id->sandbox-agent (agent {})}
          host-settings# {:server-port 12321 :hostname "localhost"}
          leadership-atom# (atom false)
-         fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          optimizer-config# (or (:optimizer-config ~scheduler-config)
                                {})
          trigger-chans# (or (:trigger-chans ~scheduler-config)
@@ -162,7 +164,10 @@
                      sched/prepare-match-trigger-chan (fn [match-trigger-chan# pools#]
                                                         (when
                                                           ~trigger-matching?
-                                                          (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))]
+                                                          (prepare-match-trigger-chan-orig# match-trigger-chan# pools#)))
+                     pool-schedulers (constantly (if (empty? ~schedulers-config)
+                                                          default-schedulers-config
+                                                          ~schedulers-config))]
          (testutil/fake-test-compute-cluster-with-driver conn#
                                                          testutil/fake-test-compute-cluster-name
                                                          nil ; no dummy driver - simulator is going to call initialize
@@ -170,7 +175,6 @@
                                                          framework-id#)
          (c/start-leader-selector
            {:curator-framework curator-framework#
-            :fenzo-config fenzo-config#
             :mea-culpa-failure-limit mea-culpa-failure-limit#
             :mesos-datomic-conn conn#
             :mesos-datomic-mult mesos-mult#
@@ -355,7 +359,7 @@
    The start simulation time is the min submit time in the trace.
 
    Returns a list of the task entities run"
-  [mesos-hosts trace cycle-step-ms config temp-out-trace-file]
+  [mesos-hosts trace cycle-step-ms config schedulers-config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
@@ -424,6 +428,7 @@
       make-mesos-driver-fn
       scheduler-config
       false
+      schedulers-config
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
           (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))
@@ -600,8 +605,8 @@
                      ;; This is needed because we want the roles to be strings
                      (transform [ALL :resources MAP-VALS MAP-KEYS] name))
           config (if config-file
-                   (edn/read-string (slurp config-file))
-                   {})
+                        (edn/read-string (slurp config-file))
+                        {})
           cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
           _ (when-not cycle-step-ms
               (throw (ex-info "Must configure cycle-step-ms on command line or config file" {})))
@@ -609,6 +614,7 @@
                               (cheshire/parse-stream (clojure.java.io/reader trace-file) true)
                               cycle-step-ms
                               config
+                              (get-in config [:settings :pools :schedulers])
                               (str out-trace-file ".temp-" (System/nanoTime)))]
       (println "tasks run: " (count task-ents))
       (dump-jobs-to-csv task-ents out-trace-file)
@@ -736,10 +742,17 @@
                 (trace-host i host-mem host-cpus))
         cycle-step-ms 30000
         config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
-                :scheduler-config {:rebalancer-config {:max-preemption 1.0}
-                                   :fenzo-config {:fenzo-max-jobs-considered 200}}}
-        out-trace-a (simulate hosts jobs cycle-step-ms config nil)
-        out-trace-b (simulate hosts jobs cycle-step-ms config nil)]
+                :scheduler-config {:rebalancer-config {:max-preemption 1.0}}}
+        schedulers-config [{:pool-regex ".*"
+                            :scheduler-config {:scheduler "fenzo"
+                                               :good-enough-fitness 1.0
+                                               :fenzo-fitness-calculator default-fitness-calculator
+                                               :fenzo-max-jobs-considered 200
+                                               :fenzo-scaleback 0.95
+                                               :fenzo-floor-iterations-before-warn 10
+                                               :fenzo-floor-iterations-before-reset 1000}}]
+        out-trace-a (simulate hosts jobs cycle-step-ms config schedulers-config nil)
+        out-trace-b (simulate hosts jobs cycle-step-ms config schedulers-config nil)]
     (is (> (count out-trace-a) 0))
     (is (> (count out-trace-b) 0))
     (is (traces-equivalent? out-trace-a out-trace-b)
