@@ -1970,17 +1970,20 @@
   "Return a map of lists of job entities ordered by dru, keyed by pool.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [unfiltered-db offensive-job-filter]
+  [unfiltered-db offensive-job-filter number-to-force]
   (prom/with-duration
     prom/scheduler-rank-cycle-duration {}
     (timers/time!
       rank-jobs-duration
       (try
-        (->> (sort-jobs-by-dru-pool unfiltered-db)
-             ;; Apply the offensive job filter first before taking.
-             (pc/map-vals offensive-job-filter)
-             (pc/map-vals #(map tools/job-ent->map %))
-             (pc/map-vals #(remove nil? %)))
+        (let [jobs (->> (sort-jobs-by-dru-pool unfiltered-db)
+                        ;; Apply the offensive job filter first before taking.
+                        (pc/map-vals offensive-job-filter)
+                        (pc/map-vals #(map tools/job-ent->map %))
+                        (pc/map-vals #(remove nil? %)))]
+          ; Force the first N jobs.
+          (doall (take number-to-force jobs))
+          jobs)
         (catch Throwable t
           (log/error t "Failed to rank jobs")
           (meters/mark! rank-jobs-failures)
@@ -1988,13 +1991,14 @@
 
 (defn- start-jobs-prioritizer!
   [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
-  (let [offensive-jobs-ch (make-offensive-job-stifler conn)
+  (let [number-to-force (get-in config/config [:settings :rank :number-to-force])
+        offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (tools/chime-at-ch trigger-chan
                        (fn rank-jobs-event []
                          (log/info "Starting pending job ranking")
                          (reset! pool-name->pending-jobs-atom
-                                 (rank-jobs (d/db conn) offensive-job-filter))
+                                 (rank-jobs (d/db conn) offensive-job-filter number-to-force))
                          (log/info "Done with pending job ranking")))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])

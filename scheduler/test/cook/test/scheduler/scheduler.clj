@@ -873,7 +873,7 @@
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (testing "enough offers for all normal jobs."
       (is (= {"no-pool" (list (tools/job-ent->map job-entity))}
-             (sched/rank-jobs test-db offensive-job-filter))))))
+             (sched/rank-jobs test-db offensive-job-filter 5))))))
 
 (deftest test-mesos-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
