@@ -78,6 +78,11 @@
   [pod-name]
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
+(defn kubernetes-scheduler-pod?
+  "Given a pod, returns true if its scheduling is handled by Kubernetes."
+  [^V1Pod pod]
+  (= "kubernetes" (some-> pod .getMetadata .getLabels (.get "twosigma.com/scheduler"))))
+
 (defn pod-name->job-uuid
   "If a pod is synthetic, return the uuid of the job it was created for"
   [pod-name]
@@ -104,11 +109,6 @@
        :pool (cached-queries/job->pool-name job)
        :user user}
       instance-uuid (assoc :instance-uuid instance-uuid))))
-
-(defn kubernetes-scheduler-pod?
-  "Given a pod, returns true if its scheduling is handled by Kubernetes."
-  [^V1Pod pod]
-  (= "kubernetes" (some-> pod .getMetadata .getLabels (.get "twosigma.com/scheduler"))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the

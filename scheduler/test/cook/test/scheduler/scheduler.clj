@@ -2504,10 +2504,6 @@
                   {:compute-cluster/cluster-name
                    compute-cluster-1-name}
                   :instance/start-time 2}
-      instance-3 {:instance/compute-cluster
-                  {:compute-cluster/cluster-name
-                   compute-cluster-1-name}
-                  :instance/start-time 2}
       instances [instance-1 instance-2]]
 
   (deftest test-job->preferred-compute-clusters

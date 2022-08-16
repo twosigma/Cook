@@ -424,10 +424,10 @@
 (defn record-hostname
   "Record the pod's hostname in Datomic."
   [pod-name {:keys [^V1Pod pod]}]
-  (when (api/kubernetes-scheduler-pod? pod)
-    (log-structured/debug "Recording hostname for pod" {:pod-name pod-name})
+  (when (api/kubernetes-scheduler-pod? pod) 
     (let [task-id (-> pod .getMetadata .getName)
           hostname (api/pod->node-name pod)]
+      (log-structured/debug "Recording hostname for pod" {:pod-name pod-name :hostname hostname})
       (when hostname (scheduler/write-hostname-to-datomic datomic/conn task-id hostname)))))
 
 (defn handle-pod-killed
@@ -722,10 +722,8 @@
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
          (record-sandbox-url pod-name new-state)))
      ; Hostname will change for pods scheduled by Kubernetes.
-     (log-structured/debug "nyc-synth1" {:old old-state :new new-state :old-node (api/pod->node-name (:pod old-state)) :new-node (api/pod->node-name (:pod new-state))})
      (when-not (= (api/pod->node-name (:pod new-state))
                   (api/pod->node-name (:pod old-state)))
-       (log/debug "nyc-synth2")
        (record-hostname pod-name new-state))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
