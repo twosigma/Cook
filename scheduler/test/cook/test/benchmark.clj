@@ -49,12 +49,12 @@
             offensive-jobs-ch (sched/make-offensive-job-stifler conn)
             offensive-job-filter (partial sched/filter-offensive-jobs task-constraints offensive-jobs-ch)]
         (println "============ rank-jobs timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs db offensive-job-filter 0))))
     (testing "rank-jobs minus offensive-job-filter"
       (let [db (d/db conn)
             offensive-job-filter identity]
         (println "============ rank-jobs minus offensive-job-filter timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs db offensive-job-filter 0))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
             pending-task-ents (->> (queries/get-pending-job-ents db)
