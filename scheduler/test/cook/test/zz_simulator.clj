@@ -93,8 +93,6 @@
                                :memory-gb 140
                                :cpus 40
                                :retry-limit 5})
-(def default-kubernetes-scheduler-config {:pool-regex "$^"
-                                          :max-considerable 1000})
 
 (defmacro with-cook-scheduler
   [conn make-mesos-driver-fn scheduler-config trigger-matching? schedulers-config & body]
@@ -154,8 +152,7 @@
                                                               {}
                                                               cook.rate-limit/AllowAllRateLimiter
                                                               (ReentrantReadWriteLock. true)))
-         prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan
-         kubernetes-scheduler-config# (merge default-kubernetes-scheduler-config (:kubernetes-scheduler ~scheduler-config))]
+         prepare-match-trigger-chan-orig# ~sched/prepare-match-trigger-chan]
      (try
        (with-redefs [executor-config (constantly executor-config#)
                      completion/plugin completion/no-op
@@ -192,8 +189,7 @@
             :task-constraints task-constraints#
             :trigger-chans trigger-chans#
             :zk-prefix zk-prefix#
-            :api-only false
-            :kubernetes-scheduler-config kubernetes-scheduler-config#})
+            :api-only false})
          (do ~@body))
        (finally
          (.close curator-framework#)

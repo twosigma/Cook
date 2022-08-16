@@ -129,8 +129,7 @@
                                :task-constraints task-constraints
                                :trigger-chans trigger-chans
                                :zk-prefix mesos-leader-path
-                               :api-only? (cook.config/api-only-mode?)
-                               :kubernetes-scheduler-config kubernetes-scheduler})
+                               :api-only? (cook.config/api-only-mode?)})
                             (catch ClassNotFoundException e
                               (log/warn e "Not loading mesos support...")
                               nil)))

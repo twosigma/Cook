@@ -213,8 +213,7 @@
                                        :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                        :rebalancer-reservation-atom rebalancer-reservation-atom
                                        :task-constraints task-constraints
-                                       :trigger-chans trigger-chans
-                                       :kubernetes-scheduler-config kubernetes-scheduler-config})]
+                                       :trigger-chans trigger-chans})]
                                 ; we need to make sure to initialize cc/pool-name->fenzo-state-atom before we take leadership
                                 ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-state-atom
                                 ; needs to be set

@@ -1536,6 +1536,153 @@
                    max-considerable)
                  next-considerable))))))
 
+(defn job->task-txn
+  "Generate task transaction for a job."
+  [job metadata compute-cluster]
+  (let [{:keys [job/last-waiting-start-time job/uuid]} job
+        {:keys [executor task-id]} metadata
+        job-ref [:job/uuid uuid]
+        instance-start-time (now)]
+    [[:job/allowed-to-start? job-ref]
+     ;; The job will remain waiting until the instance is running.
+     [:db/add job-ref :job/state :job.state/waiting]
+     (cond->
+      {:db/id (d/tempid :db.part/user)
+       :job/_instance job-ref
+       :instance/executor executor
+       :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
+       ;; TODO(alexh): update this once scheduled on a node.
+       :instance/hostname "Unknown"
+       :instance/ports 9876
+       :instance/preempted? false
+       :instance/progress 0
+       :instance/slave-id "Unknown"
+       :instance/start-time instance-start-time
+       :instance/status :instance.status/unknown
+       :instance/task-id task-id
+       :instance/compute-cluster (cc/db-id compute-cluster)}
+       last-waiting-start-time
+       (assoc :instance/queue-time
+              (- (.getTime instance-start-time)
+                 (.getTime ^Date last-waiting-start-time))))]))
+
+(defn jobs->kubernetes-task-metadata
+  "Generate sequence of task-metadata for jobs in a compute-cluster, suitable for Kubernetes Scheduler."
+  [jobs pool-name mesos-run-as-user compute-cluster]
+  (let [jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)]
+    (for [{:keys [job/name job/user job/uuid job/environment] :as job} jobs]
+      (let [pool-specific-resources
+            ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+        (merge
+         (task/job->task-metadata compute-cluster mesos-run-as-user
+                                  job (jobs->task-id job))
+         {; NB: see `kubernetes/compute_cluster/autoscale!`
+          ; for how launching a real job pod without a hostname
+          ; compares to launching a synthetic pod.
+
+          ; Job constraints need to be expressed on a real job
+          ; pod so that if it triggers the cluster autoscaler,
+          ; CA will spin up nodes that will end up satisfying it. 
+          :pod-constraints (constraints/job->constraints job)
+
+          ; We need to label the pods handled completely by Kubernetes
+          ; so that we can treat them differently throughout the scheduler.
+          :pod-labels {"twosigma.com/scheduler" "kubernetes"}
+
+          ; Cook has a "novel host constraint", which disallows a job from
+          ; running on the same host twice. So, we need to avoid running a
+          ; real job pod on any of the hosts that it won't be able to run on.
+          :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
+          :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                         :job {:job/pool {:pool/name pool-name}
+                               :job/environment environment
+                               :job/name name
+                               :job/user user
+                               :job/uuid uuid}
+                         ; Need to pass in resources to task-metadata->pod for gpu count
+                         :resources pool-specific-resources}})))))
+
+(defn handle-kubernetes-scheduler-pool
+  "Handle scheduling pending jobs using the Kubernetes Scheduler."
+  [conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
+   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
+  (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
+  (try
+    (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
+                                             :tags {:pool pool-name :component tracing-component-tag}}]
+                        @user->usage-future)
+          {max-considerable :max-jobs-considered} scheduler-config
+          db (db conn)
+          pending-jobs (get @pool-name->pending-jobs-atom pool-name)
+          ;; We need to filter pending jobs based on quota so that we don't
+          ;; submit beyond what users have quota to actually run.
+          jobs (prom/with-duration
+                 prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
+                 (timers/time!
+                  (timers/timer (metric-title "kubernetes-handler-considerable-jobs-duration" pool-name))
+                  (pending-jobs->considerable-jobs
+                   db pending-jobs user->quota user->usage max-considerable pool-name)))
+          job-uuids (set (map :job/uuid jobs))]
+      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count job-uuids)})
+      (if (seq jobs)
+        (do
+          (swap! pool-name->pending-jobs-atom
+                 remove-matched-jobs-from-pending-jobs
+                 job-uuids pool-name)
+          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
+                                {:pool pool-name})
+          (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+                ;; Distribute each job to a compute cluster
+                ;; TODO(alexh): confirm this is random
+                compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                       jobs pool-name autoscaling-compute-clusters
+                                       job->acceptable-compute-clusters-fn)]
+            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name})
+            (->> compute-cluster->jobs
+                 (map
+                  (fn [[compute-cluster jobs]]
+                    (let [kill-lock-object (cc/kill-lock-object compute-cluster)
+                          task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+                          task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
+                      (try
+                        (log-structured/debug "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
+                                              {:pool pool-name :compute-cluster compute-cluster})
+                        (.. kill-lock-object readLock lock)
+                        (timers/time!
+                         (timers/timer (metric-title "kubernetes-handler-transact-task-duration" pool-name))
+                         (datomic/transact
+                          conn
+                          (reduce into [] task-txns)
+                          (fn [e]
+                            (log-structured/warn "Transaction timed out, so these tasks might be present"
+                                                 "in Datomic without actually having been launched in compute cluster"
+                                                 {:compute-cluster compute-cluster
+                                                  :pool pool-name}
+                                                 e)
+                            ;; TODO(alexh): this doesn't bubble up to the handler. It silently logs and continues.
+                            (throw e))))
+                        (timers/time!
+                         (timers/timer (metric-title "kubernetes-handler-launch-duration" pool-name))
+                         (future (cc/launch-tasks compute-cluster
+                                                  pool-name
+                                                  [{:task-metadata-seq task-metadata-seq}]
+                                                  (fn process-task-post-launch!
+                                                    [{:keys [_ task-request]}]
+                                                    (let [user (get-in task-request [:job :job/user])
+                                                          compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
+                                                          token-key (quota/pool+user->token-key pool-name user)]
+                                                      (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
+                                                      (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
+                                                    (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})))))
+                        (finally
+                          (.. kill-lock-object readLock unlock))))))
+                 doall
+                 (run! deref))
+            (log-structured/info "Launched jobs" {:pool pool-name :number-launched-jobs (count job-uuids)})))
+        (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
+    (catch Exception e
+      (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
+
 (defn reconcile-jobs
   "Ensure all jobs saw their final state change"
   [conn]
@@ -2177,157 +2324,17 @@
                                                 (generate-user-usage-map (d/db conn) pool-name)))
                    compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                    user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))]
-               (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache 
-                                  scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-                                  job->acceptable-compute-clusters-fn user->quota user->usage-future))
+               (if using-kubernetes-scheduler?
+                 (handle-kubernetes-scheduler-pool conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
+                                                   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user)
+                 (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache
+                                    scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
+                                    job->acceptable-compute-clusters-fn user->quota user->usage-future)))
              (catch Exception e
                (log-structured/error "Pool handler encountered exception; continuing" {:pool pool-name} e)))))
        (log-structured/info "Done with pool handler" {:pool pool-name}))
      {:error-handler (fn [ex] (log-structured/error "Error occurred in pool handler" {:pool pool-name} ex))})
     resources-atom))
-
-(defn job->task-txn
-  "Generate task transaction for a job."
-  [job metadata compute-cluster]
-  (let [{:keys [job/last-waiting-start-time job/uuid]} job
-        {:keys [executor task-id]} metadata
-        job-ref [:job/uuid uuid]
-        instance-start-time (now)]
-    [[:job/allowed-to-start? job-ref]
-     ;; The job will remain waiting until the instance is running.
-     [:db/add job-ref :job/state :job.state/waiting]
-     (cond->
-      {:db/id (d/tempid :db.part/user)
-       :job/_instance job-ref
-       :instance/executor executor
-       :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
-       ;; TODO(alexh): update this once scheduled on a node.
-       :instance/hostname "Unknown"
-       :instance/ports 9876
-       :instance/preempted? false
-       :instance/progress 0
-       :instance/slave-id "Unknown"
-       :instance/start-time instance-start-time
-       :instance/status :instance.status/unknown
-       :instance/task-id task-id
-       :instance/compute-cluster (cc/db-id compute-cluster)}
-       last-waiting-start-time
-       (assoc :instance/queue-time
-              (- (.getTime instance-start-time)
-                 (.getTime ^Date last-waiting-start-time))))]))
-
-(defn jobs->kubernetes-task-metadata
-  "Generate sequence of task-metadata for jobs in a compute-cluster, suitable for Kubernetes Scheduler."
-  [jobs pool-name mesos-run-as-user compute-cluster]
-  (let [jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)]
-    (for [{:keys [job/name job/user job/uuid job/environment] :as job} jobs]
-      (let [pool-specific-resources
-            ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
-        (merge
-         (task/job->task-metadata compute-cluster mesos-run-as-user
-                                  job (jobs->task-id job))
-         {; NB: see `kubernetes/compute_cluster/autoscale!`
-          ; for how launching a real job pod without a hostname
-          ; compares to launching a synthetic pod.
-
-          ; Job constraints need to be expressed on a real job
-          ; pod so that if it triggers the cluster autoscaler,
-          ; CA will spin up nodes that will end up satisfying it. 
-          :pod-constraints (constraints/job->constraints job)
-
-          ; Cook has a "novel host constraint", which disallows a job from
-          ; running on the same host twice. So, we need to avoid running a
-          ; real job pod on any of the hosts that it won't be able to run on.
-          :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
-          :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-                         :job {:job/pool {:pool/name pool-name}
-                               :job/environment environment
-                               :job/name name
-                               :job/user user
-                               :job/uuid uuid}
-                         ; Need to pass in resources to task-metadata->pod for gpu count
-                         :resources pool-specific-resources}})))))
-
-(defn handle-kubernetes-scheduler-pool
-  "Handle scheduling pending jobs using the Kubernetes Scheduler."
-  [conn pool-name->pending-jobs-atom
-   pool-name compute-clusters job->acceptable-compute-clusters-fn
-   user->quota user->usage-future num-considerable mesos-run-as-user]
-  (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
-  (try
-    (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
-                                             :tags {:pool pool-name :component tracing-component-tag}}]
-                        @user->usage-future)
-          db (db conn)
-          pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-          ;; We need to filter pending jobs based on quota so that we don't
-          ;; submit beyond what users have quota to actually run.
-          jobs (prom/with-duration
-                 prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
-                 (timers/time!
-                  (timers/timer (metric-title "kubernetes-handler-considerable-jobs-duration" pool-name))
-                  (pending-jobs->considerable-jobs
-                   db pending-jobs user->quota user->usage num-considerable pool-name)))
-          job-uuids (set (map :job/uuid jobs))]
-      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count job-uuids)})
-      (if (seq jobs)
-        (do
-          (swap! pool-name->pending-jobs-atom
-                 remove-matched-jobs-from-pending-jobs
-                 job-uuids pool-name)
-          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
-                                {:pool pool-name})
-          (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-                ;; Distribute each job to a compute cluster
-                ;; TODO(alexh): confirm this is random
-                compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                       jobs pool-name autoscaling-compute-clusters
-                                       job->acceptable-compute-clusters-fn)]
-            (log-structured/info "Starting launch directly to Kubernetes" {:pool pool-name})
-            (->> compute-cluster->jobs
-                 (map
-                  (fn [[compute-cluster jobs]]
-                    (let [kill-lock-object (cc/kill-lock-object compute-cluster)
-                          task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
-                          task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
-                      (try
-                        (log-structured/debug "Acquiring lock to commit tasks and and launch for Kubernetes Scheduler pool."
-                                              {:pool pool-name :compute-cluster compute-cluster})
-                        (.. kill-lock-object readLock lock)
-                        (timers/time!
-                         (timers/timer (metric-title "kubernetes-handler-transact-task-duration" pool-name))
-                         (datomic/transact
-                          conn
-                          (reduce into [] task-txns)
-                          (fn [e]
-                            (log-structured/warn "Transaction timed out, so these tasks might be present"
-                                                 "in Datomic without actually having been launched in compute cluster"
-                                                 {:compute-cluster compute-cluster
-                                                  :pool pool-name}
-                                                 e)
-                            ;; TODO(alexh): this doesn't bubble up to the handler. It silently logs and continues.
-                            (throw e))))
-                        (timers/time!
-                         (timers/timer (metric-title "kubernetes-handler-launch-duration" pool-name))
-                         (future (cc/launch-tasks compute-cluster
-                                                  pool-name
-                                                  [{:task-metadata-seq task-metadata-seq}]
-                                                  (fn process-task-post-launch!
-                                                    [{:keys [_ task-request]}]
-                                                    (let [user (get-in task-request [:job :job/user])
-                                                          compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
-                                                          token-key (quota/pool+user->token-key pool-name user)]
-                                                      (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
-                                                      (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
-                                                    (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})))))
-                        (finally
-                          (.. kill-lock-object readLock unlock))))))
-                 doall
-                 (run! deref))
-            (log-structured/info "Launched jobs" {:pool pool-name :number-launched-jobs (count job-uuids)})))
-        (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
-    (catch Exception e
-      (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
 
 (defn create-datomic-scheduler
   [{:keys [conn cluster-name->compute-cluster-atom mea-culpa-failure-limit

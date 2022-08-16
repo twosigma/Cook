@@ -105,16 +105,10 @@
        :user user}
       instance-uuid (assoc :instance-uuid instance-uuid))))
 
-;; TODO(alexh): should we use another method to determine this? Label?
 (defn kubernetes-scheduler-pod?
-  "Given a pod name, returns true if its scheduling is handled by Kubernetes."
-  [pod-name]
-  (let [instance-uuid (pod-name->instance-uuid pod-name)
-        job-uuid (or (pod-name->job-uuid pod-name)
-                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
-        job (cached-queries/job-uuid->job-map-cache-lookup job-uuid)
-        pool-name (cached-queries/job->pool-name job)]
-    (config/is-kubernetes-scheduler-pool? (config/kubernetes-scheduler) pool-name)))
+  "Given a pod, returns true if its scheduling is handled by Kubernetes."
+  [^V1Pod pod]
+  (= "kubernetes" (some-> pod .getMetadata .getLabels (.get "twosigma.com/scheduler"))))
 
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
@@ -163,6 +157,11 @@
   "Is this a cook pod? Uses some-> so is null-safe."
   [^V1Pod pod compute-cluster-name]
   (= compute-cluster-name (some-> pod .getMetadata .getLabels (.get cook-pod-label))))
+
+(defn is-kubernetes-scheduler-pod
+  "TODO"
+  []
+  false)
 
 (defn pod->node-name
   "Given a pod, returns the node name on the pod spec"
@@ -1826,18 +1825,15 @@
 (defn pod-unschedulable?
   "Returns true if the given pod status has a PodScheduled
   condition with status False and reason Unschedulable"
-  [pod-name ^V1PodStatus pod-status]
+  [pod-name ^V1PodStatus pod-status ^V1Pod pod]
   (let [{:keys [pod-condition-unschedulable-seconds
                 synthetic-pod-condition-unschedulable-seconds]}
         (config/kubernetes)
-        {kubernetes-scheduler-pod-condition-unschedulable-seconds :pod-condition-unschedulable-seconds}
-        (config/kubernetes-scheduler)
         unschedulable-seconds
-        (if (some-> pod-name synthetic-pod?)
+        (if (or (some-> pod-name synthetic-pod?)
+                (some-> pod kubernetes-scheduler-pod?))
           synthetic-pod-condition-unschedulable-seconds
-          (if (some-> pod-name kubernetes-scheduler-pod?)
-            kubernetes-scheduler-pod-condition-unschedulable-seconds
-            pod-condition-unschedulable-seconds))]
+          pod-condition-unschedulable-seconds)]
     (some->> pod-status
              .getConditions
              (some
@@ -2010,7 +2006,7 @@
                 ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
                 ; saw available capacity on a node and when we submitted the pod to that
                 ; node, then the pod will never get scheduled.
-                (pod-unschedulable? pod-name pod-status)
+                (pod-unschedulable? pod-name pod-status pod)
                 (let [synthesized-state {:state :pod/failed
                                          :reason "Unschedulable"}]
                   (log-structured/info "Encountered unschedulable pod"

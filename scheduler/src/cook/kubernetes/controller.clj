@@ -251,7 +251,7 @@
 
 (defn container-status->failure-reason
   "Maps kubernetes failure reasons to cook failure reasons"
-  [{:keys [name]} instance-id ^V1PodStatus pod-status ^V1ContainerStatus container-status]
+  [{:keys [name]} instance-id ^V1PodStatus pod-status ^V1Pod pod ^V1ContainerStatus container-status]
   ; TODO map additional kubernetes failure reasons
   (let [container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
         pod-status-reason (.getReason pod-status)
@@ -281,7 +281,7 @@
         (log/info "In compute cluster" name ", encountered OutOfcpu pod status reason for" instance-id)
         :reason-invalid-offers)
 
-      (api/pod-unschedulable? instance-id pod-status)
+      (api/pod-unschedulable? instance-id pod-status pod)
       (do
         (log/info "In compute cluster" name ", encountered unschedulable pod" instance-id)
         :reason-scheduling-failed-on-host)
@@ -339,7 +339,7 @@
               reason (or reason
                          (when succeeded? :reason-normal-exit)
                          (container-status->failure-reason compute-cluster pod-name
-                                                           pod-status job-container-status))
+                                                           pod-status pod job-container-status))
               status {:task-id {:value pod-name}
                       :state task-state
                       :reason reason}
@@ -424,12 +424,10 @@
 (defn record-hostname
   "Record the pod's hostname in Datomic."
   [pod-name {:keys [^V1Pod pod]}]
-  (log-structured/debug "nyc-record-hostname1" {:k8s-pod (api/kubernetes-scheduler-pod? pod-name)})
-  (when (api/kubernetes-scheduler-pod? pod-name)
+  (when (api/kubernetes-scheduler-pod? pod)
+    (log-structured/debug "Recording hostname for pod" {:pod-name pod-name})
     (let [task-id (-> pod .getMetadata .getName)
           hostname (api/pod->node-name pod)]
-        (log-structured/debug "nyc-record-hostname2" {:hostname hostname :task-id task-id})
-
       (when hostname (scheduler/write-hostname-to-datomic datomic/conn task-id hostname)))))
 
 (defn handle-pod-killed

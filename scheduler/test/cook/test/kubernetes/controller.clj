@@ -28,7 +28,7 @@
       (.setReason pod-status "OutOfcpu")
       (is (= :reason-invalid-offers
              (controller/container-status->failure-reason {:name "test-cluster"} "12345"
-                                                          pod-status container-status))))))
+                                                          pod-status nil container-status))))))
 (deftest test-process
   (tu/setup)
   (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
@@ -293,7 +293,7 @@
             reason (atom nil)]
         (.setStatus pod (V1PodStatus.))
         (with-redefs [controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
-                      controller/container-status->failure-reason (fn [_ _ _ _]
+                      controller/container-status->failure-reason (fn [_ _ _ _ _]
                                                                     (throw (ex-info "Shouldn't get called" {})))]
           (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}}
                                            :reason :reason-task-invalid))
@@ -305,7 +305,7 @@
         (.setStatus pod (V1PodStatus.))
         (with-redefs [cc/compute-cluster-name (constantly "compute-cluster-name")
                       controller/write-status-to-datomic (fn [_ status] (reset! reason (:reason status)))
-                      controller/container-status->failure-reason (fn [_ _ _ _]
+                      controller/container-status->failure-reason (fn [_ _ _ _ _]
                                                                     (throw (ex-info "Got Exception" {})))]
           (controller/handle-pod-completed nil "podA" {:pod pod :synthesized-state {:state :pod/failed}})
           (is (= :reason-task-unknown @reason)))))
