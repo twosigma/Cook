@@ -479,6 +479,22 @@
 
   (restore-offers [this pool-name offers])
 
+  (get-outstanding-synthetic-pods [this pool-name]
+    (->> (get-pods-in-pool this pool-name)
+         (add-starting-pods this)
+         (filter synthetic-pod->job-uuid)))
+
+  (set-synthetic-pods-counters [_ pool-name num-synthetic-pods]
+    (let [{:keys [max-pods-outstanding]} synthetic-pods-config]
+      (monitor/set-counter!
+        (counters/counter ["cook-k8s" "total-synthetic-pods" (str "compute-cluster-" name) (str "pool-" pool-name)])
+        num-synthetic-pods)
+      (monitor/set-counter!
+        (counters/counter ["cook-k8s" "max-total-synthetic-pods" (str "compute-cluster-" name) (str "pool-" pool-name)])
+        max-pods-outstanding)
+      (prom/set prom/total-synthetic-pods {:pool pool-name :compute-cluster name} num-synthetic-pods)
+      (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding)))
+
   (autoscaling? [_ pool-name]
     (and (-> synthetic-pods-config :pools (contains? pool-name))
          (= @state-atom :running)))
@@ -494,18 +510,12 @@
                   (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
           (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
                 prom-stop-fn (prom/start-timer prom/autoscale-duration {:compute-cluster name})
-                outstanding-synthetic-pods (->> (get-pods-in-pool this pool-name)
-                                                (add-starting-pods this)
-                                                (filter synthetic-pod->job-uuid))
+                outstanding-synthetic-pods (cc/get-outstanding-synthetic-pods this pool-name)
                 num-synthetic-pods (count outstanding-synthetic-pods)
                 total-pods (-> @all-pods-atom keys count)
                 total-nodes (-> @current-nodes-atom keys count)
                 {:keys [image user command max-pods-outstanding max-total-pods max-total-nodes]
-                 :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config
-                set-counter-fn (fn [counter-name counter-value]
-                                 (monitor/set-counter!
-                                   (counters/counter ["cook-k8s" counter-name (str "compute-cluster-" name) (str "pool-" pool-name)])
-                                   counter-value))]
+                 :or {command "exit 0" max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
 
             (when (>= total-pods max-total-pods)
               (log-structured/warn "Total pods are maxed out"
@@ -523,10 +533,7 @@
                                     :number-max-synthetic-pods max-pods-outstanding
                                     :number-synthetic-pods num-synthetic-pods}))
 
-            (set-counter-fn "total-synthetic-pods" num-synthetic-pods)
-            (set-counter-fn "max-total-synthetic-pods" max-pods-outstanding)
-            (prom/set prom/total-synthetic-pods {:pool pool-name :compute-cluster name} num-synthetic-pods)
-            (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding)
+            (cc/set-synthetic-pods-counters this pool-name num-synthetic-pods)
 
             (let [max-launchable (min (- max-pods-outstanding num-synthetic-pods)
                                       (- max-total-nodes total-nodes)
