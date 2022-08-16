@@ -105,6 +105,17 @@
        :user user}
       instance-uuid (assoc :instance-uuid instance-uuid))))
 
+;; TODO(alexh): should we use another method to determine this? Label?
+(defn kubernetes-scheduler-pod?
+  "Given a pod name, returns true if its scheduling is handled by Kubernetes."
+  [pod-name]
+  (let [instance-uuid (pod-name->instance-uuid pod-name)
+        job-uuid (or (pod-name->job-uuid pod-name)
+                     (cached-queries/instance-uuid->job-uuid-cache-lookup instance-uuid))
+        job (cached-queries/job-uuid->job-map-cache-lookup job-uuid)
+        pool-name (cached-queries/job->pool-name job)]
+    (config/is-kubernetes-scheduler-pool? (config/kubernetes-scheduler) pool-name)))
+
 ; DeletionCandidateTaint is a soft taint that k8s uses to mark unneeded
 ; nodes as preferably unschedulable. This taint is added as soon as the
 ; autoscaler detects that nodes are under-utilized and all pods could be
@@ -1819,22 +1830,26 @@
   (let [{:keys [pod-condition-unschedulable-seconds
                 synthetic-pod-condition-unschedulable-seconds]}
         (config/kubernetes)
+        {kubernetes-scheduler-pod-condition-unschedulable-seconds :pod-condition-unschedulable-seconds}
+        (config/kubernetes-scheduler)
         unschedulable-seconds
         (if (some-> pod-name synthetic-pod?)
           synthetic-pod-condition-unschedulable-seconds
-          pod-condition-unschedulable-seconds)]
+          (if (some-> pod-name kubernetes-scheduler-pod?)
+            kubernetes-scheduler-pod-condition-unschedulable-seconds
+            pod-condition-unschedulable-seconds))]
     (some->> pod-status
              .getConditions
              (some
-               (fn pod-condition-unschedulable?
-                 [^V1PodCondition condition]
-                 (and (-> condition .getType (= "PodScheduled"))
-                      (-> condition .getStatus (= "False"))
-                      (-> condition .getReason (= "Unschedulable"))
-                      (-> condition
-                          .getLastTransitionTime
-                          (t/plus (t/seconds unschedulable-seconds))
-                          (t/before? (t/now)))))))))
+              (fn pod-condition-unschedulable?
+                [^V1PodCondition condition]
+                (and (-> condition .getType (= "PodScheduled"))
+                     (-> condition .getStatus (= "False"))
+                     (-> condition .getReason (= "Unschedulable"))
+                     (-> condition
+                         .getLastTransitionTime
+                         (t/plus (t/seconds unschedulable-seconds))
+                         (t/before? (t/now)))))))))
 
 (defn pod-has-stuck-condition?
   "Returns true if the given pod status has a pod condition that is deemed stuck,

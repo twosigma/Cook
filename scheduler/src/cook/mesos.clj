@@ -30,10 +30,9 @@
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [cook.util :as util]
-            [datomic.api :as d :refer [q]]
+            [datomic.api :as d]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :refer [db]]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [plumbing.core :refer [map-from-keys]]
@@ -214,7 +213,8 @@
                                        :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                        :rebalancer-reservation-atom rebalancer-reservation-atom
                                        :task-constraints task-constraints
-                                       :trigger-chans trigger-chans})]
+                                       :trigger-chans trigger-chans
+                                       :kubernetes-scheduler-config kubernetes-scheduler-config})]
                                 ; we need to make sure to initialize cc/pool-name->fenzo-state-atom before we take leadership
                                 ; after we take leadership, we should be able to create dynamic clusters, so cc/pool-name->fenzo-state-atom
                                 ; needs to be set

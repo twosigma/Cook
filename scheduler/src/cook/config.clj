@@ -544,6 +544,12 @@
                                     telemetry-tags-key-invalid-char-pattern
                                     (assoc :telemetry-tags-key-invalid-char-pattern
                                            (re-pattern telemetry-tags-key-invalid-char-pattern))))))
+     :kubernetes-scheduler (fnk [[:config {kubernetes-scheduler {}}]]
+                                (merge
+                                 {:pool-regex "$^"
+                                  :max-considerable 1000
+                                  :pod-condition-unschedulable-seconds 900}
+                                 kubernetes-scheduler))
      :offer-matching (fnk [[:config {offer-matching {}}]]
                        (merge {:considerable-job-threshold-to-collect-job-match-statistics 20
                                :global-min-match-interval-millis 100
