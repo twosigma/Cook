@@ -1820,12 +1820,12 @@
 (defn pod-unschedulable?
   "Returns true if the given pod status has a PodScheduled
   condition with status False and reason Unschedulable"
-  [pod-name ^V1PodStatus pod-status ^V1Pod pod]
+  [^V1PodStatus pod-status ^V1Pod pod]
   (let [{:keys [pod-condition-unschedulable-seconds
                 synthetic-pod-condition-unschedulable-seconds]}
         (config/kubernetes)
         unschedulable-seconds
-        (if (or (some-> pod-name synthetic-pod?)
+        (if (or (some-> (V1Pod->name pod) synthetic-pod?)
                 (some-> pod kubernetes-scheduler-pod?))
           synthetic-pod-condition-unschedulable-seconds
           pod-condition-unschedulable-seconds)]
@@ -2001,7 +2001,7 @@
                 ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
                 ; saw available capacity on a node and when we submitted the pod to that
                 ; node, then the pod will never get scheduled.
-                (pod-unschedulable? pod-name pod-status pod)
+                (pod-unschedulable? pod-status pod)
                 (let [synthesized-state {:state :pod/failed
                                          :reason "Unschedulable"}]
                   (log-structured/info "Encountered unschedulable pod"

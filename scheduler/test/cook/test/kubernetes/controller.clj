@@ -24,11 +24,12 @@
 (deftest test-container-status->failure-reason
   (testing "no container status + out-of-cpu pod status"
     (let [pod-status (V1PodStatus.)
-          container-status nil]
+          container-status nil
+          pod (tu/pod-helper "12345" "hostA" {:cpus 1.0 :mem 100.0})]
       (.setReason pod-status "OutOfcpu")
       (is (= :reason-invalid-offers
-             (controller/container-status->failure-reason {:name "test-cluster"} "12345"
-                                                          pod-status nil container-status))))))
+             (controller/container-status->failure-reason {:name "test-cluster"} pod-status
+                                                          pod container-status))))))
 (deftest test-process
   (tu/setup)
   (with-redefs [cached-queries/instance-uuid->job-uuid-datomic-query (constantly (java.util.UUID/randomUUID))
