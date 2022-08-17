@@ -50,10 +50,7 @@
   (restore-offers [this pool-name offers]
     "Called when offers are not processed to ensure they're still available.")
 
-  (get-outstanding-synthetic-pods [this pool-name]
-    "Returns a list of outstanding synthetic pods in the pool.")
-
-  (set-synthetic-pods-counters [this pool-name num-synthetic-pods]
+  (set-synthetic-pods-counters [this pool-name]
     "Sets the counter metrics for number of and max synthetic pods.")
 
   (autoscaling? [this pool-name]

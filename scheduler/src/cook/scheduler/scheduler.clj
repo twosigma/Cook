@@ -1093,8 +1093,7 @@
               (do
                 ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics
                 (doseq [compute-cluster autoscaling-compute-clusters]
-                  (let [outstanding-synthetic-pods (cc/get-outstanding-synthetic-pods compute-cluster pool-name)]
-                    (cc/set-synthetic-pods-counters compute-cluster pool-name (count outstanding-synthetic-pods)))))))
+                  (cc/set-synthetic-pods-counters compute-cluster pool-name)))))
           (catch Throwable e
             (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))))
 

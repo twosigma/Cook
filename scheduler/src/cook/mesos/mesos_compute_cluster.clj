@@ -310,9 +310,7 @@
     (async/go
       (async/>! (pool->offers-chan pool-name) offers)))
 
-  (get-outstanding-synthetic-pods [_ _] nil)
-
-  (set-synthetic-pods-counters [_ _ _])
+  (set-synthetic-pods-counters [_ _ ])
 
   (autoscaling? [_ _] false)
 
