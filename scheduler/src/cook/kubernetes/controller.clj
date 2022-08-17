@@ -422,13 +422,14 @@
       (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))))
 
 (defn record-hostname
-  "Record the pod's hostname in Datomic."
-  [pod-name {:keys [^V1Pod pod]}]
-  (when (api/kubernetes-scheduler-pod? pod) 
-    (let [task-id (-> pod .getMetadata .getName)
-          hostname (api/pod->node-name pod)]
-      (log-structured/debug "Recording hostname for pod" {:pod-name pod-name :hostname hostname})
-      (when hostname (scheduler/write-hostname-to-datomic datomic/conn task-id hostname)))))
+  "Record the hostname in Datomic for the instance. This is necessary for pods
+   submitted directly to Kubernetes without node selection. In this case, the
+   instance has no hostname and needs to be updated once the pod is scheduled
+   on a node by Kubernetes."
+  [^V1Pod pod]
+  (let [pod-name (-> pod .getMetadata .getName)
+        hostname (api/pod->node-name pod)]
+    (when hostname (scheduler/write-hostname-to-datomic datomic/conn pod-name hostname))))
 
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
@@ -722,9 +723,10 @@
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
          (record-sandbox-url pod-name new-state)))
      ; Hostname will change for pods scheduled by Kubernetes.
-     (when-not (= (api/pod->node-name (:pod new-state))
-                  (api/pod->node-name (:pod old-state)))
-       (record-hostname pod-name new-state))
+     (when (api/kubernetes-scheduler-pod? pod)
+       (when-not (= (api/pod->node-name (:pod new-state))
+                    (api/pod->node-name (:pod old-state)))
+         (record-hostname new-state)))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
        (when-not force-process?
