@@ -16,7 +16,7 @@
 (ns cook.test.config
   (:require [clojure.test :refer :all]
             [congestion.limits :as limits]
-            [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config]
+            [cook.config :refer [config config-settings config-string->fitness-calculator default-pool env read-edn-config default-schedulers-config]
              :as config]
             [cook.test.rest.api :as api]
             [cook.test.testutil :refer [setup]])
@@ -48,7 +48,6 @@
     (is (nil? (default-pool))))
   (with-redefs [config {:settings {}}]
     (is (nil? (default-pool)))))
-
 
 (def dummy-fitness-calculator
   "This calculator simply returns 0.0 for every Fenzo fitness calculation."
@@ -97,7 +96,77 @@
     (let [bad-config (assoc-in (api/minimal-config)
                                [:config :kubernetes :controller-lock-num-shards]
                                32778)]
-      (is (thrown? ExceptionInfo (config-settings bad-config))))))
+      (is (thrown? ExceptionInfo (config-settings bad-config)))))
+
+  (testing "default pool schedulers config applies"
+    (let [valid-config (dissoc (api/minimal-config) :pools)
+          applied-config (config-settings valid-config)
+          actual (get-in applied-config [:pools :schedulers])]
+      (is applied-config)
+      (is (= actual
+             default-schedulers-config))))
+
+  (testing "default fenzo config merges with partial but valid scheduler-config"
+    (let [valid-config (assoc-in (api/minimal-config) [:config :pools :schedulers] 
+                                 [{:pool-regex "test-pool"
+                                   :scheduler-config {:scheduler "fenzo"
+                                                      :fenzo-fitness-calculator "foo"}}])
+          applied-config (config-settings valid-config)
+          actual (get-in applied-config [:pools :schedulers])]
+      (is applied-config)
+      (is (= 1 (count actual)))
+      (is (= actual
+             [{:pool-regex "test-pool"
+               :scheduler-config {:scheduler "fenzo"
+                                  :good-enough-fitness 0.8
+                                  :fenzo-fitness-calculator "foo"
+                                  :fenzo-max-jobs-considered 1000
+                                  :fenzo-scaleback 0.95
+                                  :fenzo-floor-iterations-before-warn 10
+                                  :fenzo-floor-iterations-before-reset 1000}}]))))
+  
+  (testing "default kubernetes config merges with partial but valid scheduler-config"
+    (let [valid-config (assoc-in (api/minimal-config) [:config :pools :schedulers]
+                                 [{:pool-regex "test-pool"
+                                   :scheduler-config {:scheduler "kubernetes"}}])
+          applied-config (config-settings valid-config)
+          actual (get-in applied-config [:pools :schedulers])]
+      (is applied-config)
+      (is (= 1 (count actual)))
+      (is (= actual
+             [{:pool-regex "test-pool"
+               :scheduler-config {:scheduler "kubernetes"
+                                  :max-jobs-considered 1000}}])))))
+
+(deftest test-valid-schedulers-config
+  (testing "empty valid-schedulers-config"
+    (is (nil? (config/guard-invalid-schedulers-config []))))
+
+  (testing "valid config"
+    (is (nil? (config/guard-invalid-schedulers-config [{:pool-regex "test-pool"
+                                                        :scheduler-config {:scheduler "fenzo"}}]))))
+
+  (testing "no valid pool regex"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"pool-regex key is missing from config"
+                          (config/guard-invalid-schedulers-config [{}]))))
+
+  (testing "no scheduler config"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"scheduler-config key is missing from config"
+                          (config/guard-invalid-schedulers-config [{:pool-regex "test-pool"}]))))
+
+  (testing "no scheduler"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"scheduler key is missing from scheduler-config"
+                          (config/guard-invalid-schedulers-config [{:pool-regex "test-pool"
+                                                                    :scheduler-config {}}]))))
+
+  (testing "invalid scheduler"
+    (is (thrown-with-msg? ExceptionInfo
+                          #"scheduler must be fenzo or kubernetes"
+                          (config/guard-invalid-schedulers-config [{:pool-regex "test-pool"
+                                                                    :scheduler-config {:scheduler ""}}])))))
 
 (deftest test-valid-gpu-models-config-settings
   (testing "empty valid-gpu-models"

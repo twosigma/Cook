@@ -2270,11 +2270,6 @@
                 "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
     (async/pipe (chime-ch (util/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
 
-(defn kubernetes-scheduler?
-  "Return true if the scheduler is Kubernetes Scheduler."
-  [scheduler-name]
-  (= "kubernetes" scheduler-name))
-
 (defn pool-scheduler-config
   "Get the scheduler config for a pool."
   [schedulers pool-name]
@@ -2292,7 +2287,7 @@
         resources-atom (atom (view-incubating-offers fenzo))
         using-pools? (not (nil? (config/default-pool)))
         scheduler-name (:scheduler scheduler-config)
-        using-kubernetes-scheduler? (kubernetes-scheduler? scheduler-name)]
+        using-kubernetes-scheduler? (= "kubernetes" scheduler-name)]
     (when-not using-kubernetes-scheduler?
       (reset! fenzo-num-considerable-atom (:fenzo-max-jobs-considered scheduler-config)))
     (tools/chime-at-ch
