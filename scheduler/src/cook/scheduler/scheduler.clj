@@ -1187,7 +1187,7 @@
         (timers/time!
           (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
           (try
-            (let [db (db conn)
+            (let [db (d/db conn)
                   pending-jobs (get @pool-name->pending-jobs-atom pool-name)
                   considerable-jobs (prom/with-duration
                                       prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
