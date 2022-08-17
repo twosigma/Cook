@@ -30,7 +30,7 @@
             [cook.scheduler.scheduler :as sched]
             [cook.tools :as tools]
             [cook.util :as util]
-            [datomic.api :as d]
+            [datomic.api :as d :refer [q]]
             [mesomatic.scheduler]
             [mesomatic.types]
             [metatransaction.utils :as dutils]

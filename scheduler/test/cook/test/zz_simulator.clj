@@ -4,6 +4,7 @@
 (ns cook.test.zz-simulator
   (:gen-class)
   (:require [cheshire.core :as cheshire]
+            [chime :refer [chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
@@ -22,15 +23,14 @@
             [cook.mesos.mesos-compute-cluster :as mcc]
             [cook.mesos.mesos-mock :as mm]
             [cook.plugins.completion :as completion]
+            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.test.postgres]
-            [cook.test.testutil :as testutil :refer [poll-until
-                                                     restore-fresh-database!]]
+            [cook.test.testutil :as testutil :refer [poll-until restore-fresh-database!]]
             [cook.tools :as util]
             [datomic.api :as d]
-            [plumbing.core :refer [map-vals]])
+            [plumbing.core :refer [map-from-vals map-keys map-vals]])
   (:import (java.util Date)
            (java.util.concurrent.locks ReentrantReadWriteLock)
            (org.apache.curator.framework CuratorFrameworkFactory)

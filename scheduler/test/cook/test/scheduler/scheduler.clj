@@ -28,22 +28,23 @@
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as kapi]
+            [cook.kubernetes.compute-cluster :as kcc]
+            [cook.log-structured :as log-structured]
             [cook.mesos.task :as task]
             [cook.plugins.completion :as completion]
             [cook.plugins.definitions :as pd]
             [cook.plugins.launch :as launch-plugin]
             [cook.pool :as pool]
+            [cook.test.postgres]
             [cook.progress :as progress]
             [cook.quota :as quota]
             [cook.rate-limit :as rate-limit]
             [cook.scheduler.offer :as offer]
             [cook.scheduler.scheduler :as sched]
             [cook.scheduler.share :as share]
-            [cook.test.postgres]
             [cook.test.testutil :as testutil
-             :refer [create-dummy-group create-dummy-instance create-dummy-job
-                     create-dummy-job-with-instances create-pool
-                     restore-fresh-database! setup wait-for]]
+             :refer [create-dummy-group create-dummy-instance create-dummy-job create-dummy-job-with-instances create-pool
+                     init-agent-attributes-cache poll-until restore-fresh-database! setup wait-for]]
             [cook.tools :as tools]
             [criterium.core :as crit]
             [datomic.api :as d :refer [db q]]
@@ -51,12 +52,8 @@
             [mesomatic.types :as mtypes]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (:import (com.netflix.fenzo
-             SchedulingResult
-             SimpleAssignmentResult
-             TaskAssignmentResult
-             TaskRequest
-             TaskScheduler)
+  (:import (clojure.lang ExceptionInfo)
+           (com.netflix.fenzo SchedulingResult SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (cook.compute_cluster ComputeCluster)
            (java.util UUID)
@@ -2579,7 +2576,6 @@
                 [(assoc job :job/uuid (UUID/randomUUID))]
                 "test-pool"
                 [compute-cluster-2]
-                ;;  sched/job->acceptable-compute-clusters)))))))
                 sched/job->acceptable-compute-clusters))))))
 
   (deftest test-jobs-kubernetes-task-metadata
@@ -2604,14 +2600,14 @@
               mesos-run-as-user "wrinkle"]
           (doseq [[compute-cluster jobs] compute-cluster->jobs
                   :let [task-metadata-seq (sched/jobs->kubernetes-task-metadata jobs "test-pool" mesos-run-as-user compute-cluster)]]
-            ;; sanity check
+            ; sanity check
             (is (= (count task-metadata-seq)
                    (count jobs)))
 
             (doseq [[job metadata] (mapv vector jobs task-metadata-seq)
                     :let [{:keys [job/name job/user job/uuid job/environment]} job
                           metadata-job (get-in metadata [:task-request :job])]]
-              ;; zipped in order of jobs (expected behavior in `handle-kubernetes-scheduler-pool` for generating task-txns)
+              ; zipped in order of jobs (expected behavior in `handle-kubernetes-scheduler-pool` for generating task-txns)
               (is (= (metadata-job :job/uuid)
                      uuid))
               (is (= (metadata-job :job/name)

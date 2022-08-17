@@ -158,11 +158,6 @@
   [^V1Pod pod compute-cluster-name]
   (= compute-cluster-name (some-> pod .getMetadata .getLabels (.get cook-pod-label))))
 
-(defn is-kubernetes-scheduler-pod
-  "TODO"
-  []
-  false)
-
 (defn pod->node-name
   "Given a pod, returns the node name on the pod spec"
   [^V1Pod pod]

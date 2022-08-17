@@ -1544,14 +1544,13 @@
         job-ref [:job/uuid uuid]
         instance-start-time (now)]
     [[:job/allowed-to-start? job-ref]
-     ;; The job will remain waiting until the instance is running.
+     ; The job will remain waiting until the instance is running.
      [:db/add job-ref :job/state :job.state/waiting]
      (cond->
       {:db/id (d/tempid :db.part/user)
        :job/_instance job-ref
        :instance/executor executor
-       :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
-       ;; TODO(alexh): update this once scheduled on a node.
+       :instance/executor-id task-id ; NB command executor uses the task-id as the executor-id 
        :instance/hostname "Unknown"
        :instance/ports 9876
        :instance/preempted? false
