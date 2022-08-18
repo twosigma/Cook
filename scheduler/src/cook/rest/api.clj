@@ -223,13 +223,13 @@
   {:status s/Str
    :task_id s/Uuid
    :executor_id s/Uuid
-   :agent_id s/Str
-   :slave_id s/Str
-   :hostname s/Str
    :preempted s/Bool
    :backfilled s/Bool
    :ports [s/Int]
    :compute-cluster ComputeCluster
+   (s/optional-key :agent_id) s/Str
+   (s/optional-key :slave_id) s/Str
+   (s/optional-key :hostname) s/Str
    (s/optional-key :start_time) s/Int
    (s/optional-key :mesos_start_time) s/Int
    (s/optional-key :end_time) s/Int
