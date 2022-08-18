@@ -29,6 +29,7 @@
             [cook.caches :as caches]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.prometheus-metrics :as prom]
             [cook.queries :as queries]
             [cook.quota :as quota]
             [cook.rate-limit :as ratelimit]
@@ -388,41 +389,43 @@
    in the specified timeframe. Supports looking up based
    on task state 'success' and 'failed' if passed into 'state'"
   [db ^String user ^Date start ^Date end limit state name-filter-fn include-custom-executor? pool-name]
-  (timers/time!
-    get-completed-jobs-by-user-duration
-    (let [;; Expand the time range so that clock skew between cook
-          ;; and datomic doesn't cause us to miss jobs
-          ;; 1 hour was picked because a skew larger than that would be
-          ;; suspicious
-          expanded-start (Date. (- (.getTime start)
+  (prom/with-duration
+    prom/get-jobs-by-user-and-state-duration {:state "completed"}
+    (timers/time!
+      get-completed-jobs-by-user-duration
+      (let [;; Expand the time range so that clock skew between cook
+            ;; and datomic doesn't cause us to miss jobs
+            ;; 1 hour was picked because a skew larger than that would be
+            ;; suspicious
+            expanded-start (Date. (- (.getTime start)
+                                     (-> 1 t/hours t/in-millis)))
+            expanded-end (Date. (+ (.getTime end)
                                    (-> 1 t/hours t/in-millis)))
-          expanded-end (Date. (+ (.getTime end)
-                                 (-> 1 t/hours t/in-millis)))
-          entid-start (d/entid-at db :db.part/user expanded-start)
-          entid-end (d/entid-at db :db.part/user expanded-end)
-          default-pool? (pool/default-pool? pool-name)
-          pool-name' (or pool-name pool/nil-pool)
-          job-user-entid (d/entid db :job/user)
-          start-ms (.getTime start)
-          end-ms (.getTime end)
-          jobs
-          (->> (d/seek-datoms db :avet :job/user user entid-start)
-               (take-while #(and (< (:e %) entid-end)
-                                 (= (:a %) job-user-entid)
-                                 (= (:v %) user)))
-               (map :e)
-               (map (partial d/entity db))
-               (filter #(job-submitted-in-range? % start-ms end-ms))
-               (filter #(= :job.state/completed (:job/state %)))
-               (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?)))]
-      (->>
-        (cond->> jobs
-                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
-                 (instance-states state) (filter #(= state (job-ent->state %)))
-                 name-filter-fn (filter #(name-filter-fn (:job/name %))))
-        ; No need to sort. We're traversing in entity_id order, so in time order.
-        (take limit)
-        doall))))
+            entid-start (d/entid-at db :db.part/user expanded-start)
+            entid-end (d/entid-at db :db.part/user expanded-end)
+            default-pool? (pool/default-pool? pool-name)
+            pool-name' (or pool-name pool/nil-pool)
+            job-user-entid (d/entid db :job/user)
+            start-ms (.getTime start)
+            end-ms (.getTime end)
+            jobs
+            (->> (d/seek-datoms db :avet :job/user user entid-start)
+                 (take-while #(and (< (:e %) entid-end)
+                                   (= (:a %) job-user-entid)
+                                   (= (:v %) user)))
+                 (map :e)
+                 (map (partial d/entity db))
+                 (filter #(job-submitted-in-range? % start-ms end-ms))
+                 (filter #(= :job.state/completed (:job/state %)))
+                 (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?)))]
+        (->>
+          (cond->> jobs
+            (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
+            (instance-states state) (filter #(= state (job-ent->state %)))
+            name-filter-fn (filter #(name-filter-fn (:job/name %))))
+          ; No need to sort. We're traversing in entity_id order, so in time order.
+          (take limit)
+          doall)))))
 
 (defn uncommitted?
   "Returns true if the given job's commit latch is not committed"
@@ -430,7 +433,7 @@
   (-> job :job/commit-latch :commit-latch/committed? not))
 
 ;; This is a separate query from completed jobs because most running/waiting jobs
-;; will be at the end of the time range, so the query is somewhat inefficent.
+;; will be at the end of the time range, so the query is somewhat inefficient.
 ;; The standard datomic query performs reasonably well on the smaller set of
 ;; running and waiting jobs, so it's implemented that way to keep things simple.
 (defn get-active-jobs-by-user-and-state
@@ -442,17 +445,19 @@
                         "waiting" :job.state/waiting)
         default-pool? (pool/default-pool? pool-name)
         pool-name' (or pool-name pool/nil-pool)]
-    (timers/time!
-      (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-      (->>
-        (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
-                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
-                 name-filter-fn (filter #(name-filter-fn (:job/name %)))
-                 (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
-        (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?))
-        ; No need to sort. We're traversing in entity_id order, so in time order.
-        (take limit)
-        doall))))
+    (prom/with-duration
+      prom/get-jobs-by-user-and-state-duration {:state (name state)}
+      (timers/time!
+        (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
+        (->>
+          (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
+            (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
+            name-filter-fn (filter #(name-filter-fn (:job/name %)))
+            (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
+          (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?))
+          ; No need to sort. We're traversing in entity_id order, so in time order.
+          (take limit)
+          doall)))))
 
 
 ;; Users have many fewer running/waiting jobs than completed jobs, so they need different queries.
@@ -469,26 +474,30 @@
                               (get-active-jobs-by-user-and-state db user start end limit state
                                                                  name-filter-fn include-custom-executor? pool-name)))
         jobs-by-state (mapcat get-jobs-by-state states)]
-    (timers/time!
-      (timers/timer ["cook-mesos" "scheduler" "get-jobs-by-user-and-states-duration"])
-      (->> jobs-by-state
-           (sort-by :job/submit-time)
-           (take limit)
-           doall))))
+    (prom/with-duration
+      prom/get-jobs-by-user-and-state-total-duration {}
+      (timers/time!
+        (timers/timer ["cook-mesos" "scheduler" "get-jobs-by-user-and-states-duration"])
+        (->> jobs-by-state
+             (sort-by :job/submit-time)
+             (take limit)
+             doall)))))
 
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
 (defn get-running-task-ents
   "Returns all running task entities."
   [db]
-  (timers/time!
-    get-running-tasks-duration
-    (->> (q '[:find [?i ...]
-              :in $ [?status ...]
-              :where
-              [?i :instance/status ?status]]
-            db [:instance.status/running :instance.status/unknown])
-         (map (partial d/entity db)))))
+  (prom/with-duration
+    prom/get-all-running-tasks-duration {}
+    (timers/time!
+      get-running-tasks-duration
+      (->> (q '[:find [?i ...]
+                :in $ [?status ...]
+                :where
+                [?i :instance/status ?status]]
+              db [:instance.status/running :instance.status/unknown])
+           (map (partial d/entity db))))))
 
 (defn retrieve-instance
   "Given an instance UUID, return the instance entity."
@@ -500,53 +509,59 @@
 (defn get-user-running-job-ents
   "Returns all running job entities for a specific user."
   ([db user]
-   (timers/time!
-     get-user-running-jobs-duration
-     (->> (q
-            '[:find [?j ...]
-              :in $ ?user
-              :where
-              ;; Note: We're assuming that many users will have significantly more
-              ;; completed jobs than there are jobs currently running in the system.
-              ;; If not, we might want to swap these two constraints.
-              [?j :job/state :job.state/running]
-              [?j :job/user ?user]]
-            db user)
-          (map (partial d/entity db))))))
+   (prom/with-duration
+     prom/get-user-running-jobs-duration {:pool "all"}
+     (timers/time!
+       get-user-running-jobs-duration
+       (->> (q
+              '[:find [?j ...]
+                :in $ ?user
+                :where
+                ;; Note: We're assuming that many users will have significantly more
+                ;; completed jobs than there are jobs currently running in the system.
+                ;; If not, we might want to swap these two constraints.
+                [?j :job/state :job.state/running]
+                [?j :job/user ?user]]
+              db user)
+            (map (partial d/entity db)))))))
 
 (defn get-user-running-job-ents-in-pool
   "Returns all running job entities for a specific user and pool."
   [db user pool-name]
   (let [requesting-default-pool? (pool/requesting-default-pool? pool-name)
         pool-name' (pool/pool-name-or-default pool-name)]
-    (timers/time!
-      get-user-running-jobs-duration
-      (->> (q
-             '[:find [?j ...]
-               :in $ ?user ?pool-name ?requesting-default-pool
-               :where
-               ;; Note: We're assuming that many users will have significantly more
-               ;; completed jobs than there are jobs currently running in the system.
-               ;; If not, we might want to swap these two constraints.
-               [?j :job/state :job.state/running]
-               [?j :job/user ?user]
-               [(cook.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
-             db user pool-name' requesting-default-pool?)
-           (map (partial d/entity db))))))
+    (prom/with-duration
+      prom/get-user-running-jobs-duration {:pool pool-name'}
+      (timers/time!
+        get-user-running-jobs-duration
+        (->> (q
+               '[:find [?j ...]
+                 :in $ ?user ?pool-name ?requesting-default-pool
+                 :where
+                 ;; Note: We're assuming that many users will have significantly more
+                 ;; completed jobs than there are jobs currently running in the system.
+                 ;; If not, we might want to swap these two constraints.
+                 [?j :job/state :job.state/running]
+                 [?j :job/user ?user]
+                 [(cook.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
+               db user pool-name' requesting-default-pool?)
+             (map (partial d/entity db)))))))
 
 (timers/deftimer [cook-mesos scheduler get-running-jobs-duration])
 
 (defn get-running-job-ents
   "Returns all running job entities."
   [db]
-  (timers/time!
-    get-running-jobs-duration
-    (->> (q '[:find [?j ...]
-              :in $
-              :where
-              [?j :job/state :job.state/running]]
-            db)
-         (map (partial d/entity db)))))
+  (prom/with-duration
+    prom/get-all-running-jobs-duration {}
+    (timers/time!
+      get-running-jobs-duration
+      (->> (q '[:find [?j ...]
+                :in $
+                :where
+                [?j :job/state :job.state/running]]
+              db)
+           (map (partial d/entity db))))))
 
 (defn job-allowed-to-start?
   "Converts the DB function :job/allowed-to-start? into a predicate"
