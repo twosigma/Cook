@@ -1416,8 +1416,8 @@
                 ; Block until autoscale is done.
                 @autoscale-future
                 matched-head-or-no-matches?))
-            (catch Throwable t
-              (meters/mark! handle-resource-offer!-errors)
+          (catch Throwable t
+            (meters/mark! handle-resource-offer!-errors)
             (log-structured/error (print-str "Error in match:" (ex-data t)) {:pool pool-name} t)
             (when-let [offers @offer-stash]
               ; Group the set of all offers by compute cluster and route them to that compute cluster for restoring.
