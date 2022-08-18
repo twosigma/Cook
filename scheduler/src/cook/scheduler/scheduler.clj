@@ -1550,14 +1550,16 @@
      (cond->
       {:db/id (d/tempid :db.part/user)
        :job/_instance job-ref
+       :instance/compute-cluster (cc/db-id compute-cluster)
        :instance/executor executor
-       :instance/executor-id task-id ; NB command executor uses the task-id as the executor-id 
+       :instance/executor-id task-id ; NB command executor uses the task-id as the executor-id
+       :instance/hostname "Unknown"
        :instance/preempted? false
        :instance/progress 0
+       :instance/slave-id "Unknown"
        :instance/start-time instance-start-time
        :instance/status :instance.status/unknown
-       :instance/task-id task-id
-       :instance/compute-cluster (cc/db-id compute-cluster)}
+       :instance/task-id task-id}
        last-waiting-start-time
        (assoc :instance/queue-time
               (- (.getTime instance-start-time)
