@@ -238,31 +238,37 @@
           {}
           (:job/label job-ent)))
 
+(defn update!
+  "Version of update that works with transient structures and a single level."
+  ([map key fn default]
+   (assoc! map key (fn (get map key) default))))
+
 (defn job-ent->resources
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job]
   (let [job-ent->resources-miss
         (fn [{:keys [job/uuid] :as job-ent}]
-          (reduce (fn [m r]
-                    (let [resource (keyword (name (:resource/type r)))]
-                      (condp contains? resource
-                        #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
-                        ; We add these additional disk resources here so they're available for Fenzo binpacking, so we don't run out of disk space on a node
-                        #{:disk} (assoc m :disk (cond-> {:request (:resource.disk/request r)}
-                                                        (:resource.disk/limit r) (assoc :limit (:resource.disk/limit r))
-                                                        (:resource.disk/type r) (assoc :type (:resource.disk/type r))) )
-                        #{:uri} (update-in m [:uris] (fnil conj [])
+          (persistent!
+            (reduce (fn [m r]
+                      (let [resource (keyword (name (:resource/type r)))]
+                        (condp contains? resource
+                          #{:cpus :mem :gpus} (assoc! m resource (:resource/amount r))
+                          ; We add these additional disk resources here so they're available for Fenzo binpacking, so we don't run out of disk space on a node
+                          #{:disk} (assoc! m :disk (cond-> {:request (:resource.disk/request r)}
+                                                     (:resource.disk/limit r) (assoc :limit (:resource.disk/limit r))
+                                                     (:resource.disk/type r) (assoc :type (:resource.disk/type r))) )
+                          #{:uri} (update! m :uris (fnil conj [])
                                            {:cache (:resource.uri/cache? r false)
                                             :executable (:resource.uri/executable? r false)
                                             :value (:resource.uri/value r)
                                             :extract (:resource.uri/extract? r false)})
-                        (do
-                          (log/warn "Encountered unknown job resource type"
-                                    {:job-uuid uuid
-                                     :resource resource})
-                          m))))
-                  {:ports (:job/ports job-ent 0)}
-                  (:job/resource job-ent)))]
+                          (do
+                            (log/warn "Encountered unknown job resource type"
+                                      {:job-uuid uuid
+                                       :resource resource})
+                            m))))
+                    (transient {:ports (:job/ports job-ent 0)})
+                    (:job/resource job-ent))))]
     (caches/lookup-cache-datomic-entity! caches/job-ent->resources-cache job-ent->resources-miss job)))
 
 (defn job-ent->attempts-consumed
