@@ -1584,7 +1584,7 @@
 
           ; We need to label the pods handled completely by Kubernetes
           ; so that we can treat them differently throughout the scheduler.
-          :pod-labels {"twosigma.com/scheduler" "kubernetes"}
+          :pod-labels {"twosigma.com/cook-scheduler" "kubernetes"}
 
           ; Cook has a "novel host constraint", which disallows a job from
           ; running on the same host twice. So, we need to avoid running a

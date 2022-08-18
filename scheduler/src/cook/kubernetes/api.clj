@@ -81,7 +81,7 @@
 (defn kubernetes-scheduler-pod?
   "Given a pod, returns true if its scheduling is handled by Kubernetes."
   [^V1Pod pod]
-  (= "kubernetes" (some-> pod .getMetadata .getLabels (.get "twosigma.com/scheduler"))))
+  (= "kubernetes" (some-> pod .getMetadata .getLabels (.get "twosigma.com/cook-scheduler"))))
 
 (defn pod-name->job-uuid
   "If a pod is synthetic, return the uuid of the job it was created for"
