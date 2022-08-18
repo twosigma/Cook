@@ -1076,19 +1076,23 @@
         (try
           (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
                 num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-            (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
-              (log-structured/info "Preparing for autoscaling" {:pool pool-name})
-              (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                            pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
-                                            job->acceptable-compute-clusters-fn)]
-                (log-structured/info "Starting autoscaling" {:pool pool-name})
-                (->> compute-cluster->jobs
-                     (map
-                       (fn [[compute-cluster jobs-for-cluster]]
-                         (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
-                     doall
-                     (run! deref)))
-              (log-structured/info "Done autoscaling" {:pool pool-name})))
+            (if (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
+              (do
+                (log-structured/info "Preparing for autoscaling" {:pool pool-name})
+                (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                              pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
+                                              job->acceptable-compute-clusters-fn)]
+                  (log-structured/info "Starting autoscaling" {:pool pool-name})
+                  (->> compute-cluster->jobs
+                       (map
+                         (fn [[compute-cluster jobs-for-cluster]]
+                           (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
+                       doall
+                       (run! deref)))
+                (log-structured/info "Done autoscaling" {:pool pool-name}))
+              ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics
+              (doseq [compute-cluster autoscaling-compute-clusters]
+                (cc/set-synthetic-pods-counters compute-cluster pool-name))))
           (catch Throwable e
             (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))))
 

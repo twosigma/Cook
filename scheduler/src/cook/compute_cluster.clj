@@ -50,6 +50,9 @@
   (restore-offers [this pool-name offers]
     "Called when offers are not processed to ensure they're still available.")
 
+  (set-synthetic-pods-counters [this pool-name]
+    "Sets the counter metrics for number of and max synthetic pods.")
+
   (autoscaling? [this pool-name]
     "Returns true if this compute cluster should autoscale the provided pool to satisfy pending jobs")
 
