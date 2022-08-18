@@ -1226,9 +1226,6 @@
                             :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
                             :number-considerable-jobs number-considerable-jobs
                             :number-unmatched-jobs number-unmatched-jobs})
-      ;; This call needs to happen *after* launch-matched-tasks!
-      ;; in order to avoid autoscaling tasks taking up available
-      ;; capacity that was already matched for real Cook tasks.
       (trigger-autoscaling! filtered-autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn))))
 
 
