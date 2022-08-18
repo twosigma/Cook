@@ -1172,7 +1172,7 @@
 
 
 (defn handle-resource-offers-autoscaling-helper
-  "Handle autoscaling calculations from "
+  "Handle autoscaling calculations and autoscaling operations."
   [pool-name->pending-jobs-atom
    user->usage user->quota pool-name compute-clusters
    job->acceptable-compute-clusters-fn number-considerable-jobs number-unmatched-jobs]
