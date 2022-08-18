@@ -1086,6 +1086,29 @@
                               :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
       (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
+(defn distribute-and-handle-jobs-to-compute-clusters
+  "Distributes jobs across compute clusters and applies a given handler 
+   function for eachresulting <cluster, jobs> entry. In order to do the
+   distribution, there must be at least one job and one cluster configured
+   to do autoscaling."
+  [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn handle-jobs-for-cluster-fn]
+  (try
+    (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+          num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
+      (when (and (pos? num-autoscaling-compute-clusters) (seq jobs))
+        (log-structured/info "Preparing for job distribution" {:pool pool-name})
+        (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
+                                     jobs pool-name autoscaling-compute-clusters
+                                     job->acceptable-compute-clusters-fn)]
+          (log-structured/info "Starting job distribution" {:pool pool-name})
+          (->> compute-cluster->jobs
+               (map handle-jobs-for-cluster-fn)
+               doall
+               (run! deref)))
+        (log-structured/info "Done distributing jobs" {:pool pool-name})))
+    (catch Throwable e
+      (log-structured/error "Encountered error while distributing jobs" {:pool pool-name} e))))
+
 (defn trigger-autoscaling!
   "Autoscales the given pool to satisfy the given pending jobs, if:
   - There is at least one pending job
@@ -1096,25 +1119,12 @@
     (prom/with-duration
       prom/scheduler-trigger-autoscaling-duration {:pool pool-name}
       (timers/time!
-        (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
-        (try
-          (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-                num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-            (when (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
-              (log-structured/info "Preparing for autoscaling" {:pool pool-name})
-              (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                            pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
-                                            job->acceptable-compute-clusters-fn)]
-                (log-structured/info "Starting autoscaling" {:pool pool-name})
-                (->> compute-cluster->jobs
-                     (map
-                       (fn [[compute-cluster jobs-for-cluster]]
-                         (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
-                     doall
-                     (run! deref)))
-              (log-structured/info "Done autoscaling" {:pool pool-name})))
-          (catch Throwable e
-            (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))))
+       (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
+       (let [handle-jobs-for-cluster-fn
+             (fn [[compute-cluster jobs-for-cluster]]
+               (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn)))]
+         (distribute-and-handle-jobs-to-compute-clusters pending-jobs-for-autoscaling pool-name compute-clusters
+                                                         job->acceptable-compute-clusters-fn handle-jobs-for-cluster-fn))))))
 
 (def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
 
