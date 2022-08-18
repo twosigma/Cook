@@ -291,7 +291,7 @@
   list of those pods with currently starting pods in the compute cluster added in"
   [compute-cluster pods]
   (let [starting-pods (controller/starting-namespaced-pod-name->pod compute-cluster)]
-    (-> pods (merge starting-pods) vals)))
+    (vals (into pods starting-pods))))
 
 (defn add-starting-pods-reverse
   "Weird offshoot of add-starting-pods-reverse that is run when determining node capacity.
