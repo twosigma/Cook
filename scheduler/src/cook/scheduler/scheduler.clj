@@ -1172,7 +1172,10 @@
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
-   be accepted or rejected at the end of the function."
+   be accepted or rejected at the end of the function.
+
+   Returns true if we matched the head or didn't match anything (so that we will not reduce
+   max-considerable next iteration)"
   [conn fenzo-state pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers rebalancer-reservation-atom pool-name compute-clusters
    job->acceptable-compute-clusters-fn]
@@ -1326,23 +1329,21 @@
               (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
               (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
 
-              (let [matched-head-or-no-matches?
+              (let [no-matches? (empty? matches)
+                    matched-head-or-no-matches? (or no-matches? matched-considerable-jobs-head?)
                     ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
                     ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
                     ;; it fewer jobs to look at is unlikely to improve the situation.
                     ;; "Penalization" should only be employed when Fenzo does successfully match,
                     ;; but the matches don't align with Cook's priorities.
-                    (if (empty? matches)
-                      true
-                      (do
+                    _ (when-not no-matches?
                         (swap! pool-name->pending-jobs-atom
                                remove-matched-jobs-from-pending-jobs
                                matched-job-uuids pool-name)
                         (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
                                               {:pool pool-name})
                         (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
-                        (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
-                        matched-considerable-jobs-head?))
+                        (update-host-reservations! rebalancer-reservation-atom matched-job-uuids))
                     ; Absolute maximum jobs we will consider autoscaling to.
                     {:keys [max-jobs-for-autoscaling autoscaling-scale-factor]} (config/kubernetes)
                     ; The fraction of jobs we tried to match that didn't actually get matched.
