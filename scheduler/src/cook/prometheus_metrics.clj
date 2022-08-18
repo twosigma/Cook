@@ -385,7 +385,7 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary endpoint-duration
                           {:description "Latency distribution of API endpoints"
-                           :labels [:endpooint]
+                           :labels [:endpoint]
                            :quantiles default-summary-quantiles})
       ;; Tools metrics -------------------------------------------------------------------------------------------------
       (prometheus/summary get-jobs-by-user-and-state-duration
