@@ -97,11 +97,30 @@
 (def pod-running-duration :cook/scheduler-kubernetes-pod-duration-until-running-seconds)
 (def offer-match-timer :cook/scheduler-kubernetes-offer-match-duration-seconds)
 
+;; API metrics
+(def jobs-created :cook/api-jobs-created)
+(def list-request-param-time-range :cook/api-list-request-param-time-range-millis)
+(def list-request-param-limit :cook/api-list-request-param-limit-number)
+(def list-response-job-count :cook/api-list-request-job-count)
+(def fetch-instance-map-duration :cook/api-internal-fetch-instance-map-duration-seconds)
+(def fetch-job-map-duration :cook/api-internal-fetch-job-map-duration-seconds)
+(def fetch-jobs-duration :cook/api-internal-fetch-jobs-duration-seconds)
+(def list-jobs-duration :cook/api-internal-list-jobs-duration-seconds)
+(def endpoint-duration :cook/api-endpoint-duration-seconds)
+
+;; Tools metrics
+(def get-jobs-by-user-and-state-duration :cook/tools-get-jobs-by-user-duration-seconds)
+(def get-jobs-by-user-and-state-total-duration :cook/tools-get-jobs-by-user-and-states-duration-seconds)
+(def get-all-running-tasks-duration :cook/tools-get-all-running-tasks-duration-seconds)
+(def get-user-running-jobs-duration :cook/tools-get-user-running-jobs-duration-seconds)
+(def get-all-running-jobs-duration :cook/tools-get-all-running-jobs-duration-seconds)
+
+
 (defn create-registry
   []
   (-> (prometheus/collector-registry)
     (prometheus/register
-      ;; Scheduler metrics --------------------------------------------------------------------------------------
+      ;; Scheduler metrics ---------------------------------------------------------------------------------------------
       ;; Note that we choose to use a summary instead of a histogram for the latency metrics because we only have
       ;; one scheduler process running per cluster, so we do not need to aggregate data from multiple sources.
       ;; The quantiles are specified as a map of quantile to error margin.
@@ -170,9 +189,9 @@
                           {:description "Distribution of handle framework message latency"
                            :quantiles default-summary-quantiles})
       (prometheus/counter scheduler-jobs-launched
-                        {:description "Total count of jobs launched per pool and compute cluster"
-                         :labels [:pool :compute-cluster]})
-      ;; Match cycle metrics ------------------------------------------------------------------------------------
+                          {:description "Total count of jobs launched per pool and compute cluster"
+                           :labels [:pool :compute-cluster]})
+      ;; Match cycle metrics -------------------------------------------------------------------------------------------
       (prometheus/gauge scheduler-match-cycle-jobs-count
                         {:description "Aggregate match cycle job counts stats"
                          :labels [:pool :status]})
@@ -189,31 +208,31 @@
       (prometheus/gauge scheduler-match-cycle-all-matched
                         {:description "1 if all jobs were matched, 0 otherwise"
                          :labels [:pool]})
-      ;; Resource usage stats -----------------------------------------------------------------------------------
+      ;; Resource usage stats ------------------------------------------------------------------------------------------
       ;; We set these up using a map so we can access them easily by resource type when we set the metric.
       (prometheus/gauge (resource-metric-map :mem)
                         {:description "Current memory by state"
-                        :labels [:pool :user :state]})
+                         :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :cpus)
                         {:description "Current cpu count by state"
-                        :labels [:pool :user :state]})
+                         :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :gpus)
                         {:description "Current gpu count by state"
-                        :labels [:pool :user :state]})
+                         :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :jobs)
                         {:description "Current jobs count by state"
-                        :labels [:pool :user :state]})
+                         :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :launch-rate-saved)
                         {:description "Current launch-rate-saved count by state"
-                        :labels [:pool :user :state]})
+                         :labels [:pool :user :state]})
       (prometheus/gauge (resource-metric-map :launch-rate-per-minute)
                         {:description "Current launch-rate-per-minute count by state"
-                        :labels [:pool :user :state]})
+                         :labels [:pool :user :state]})
       ;; Metrics for user resource allocation counts
       (prometheus/gauge user-state-count
                         {:description "Current user count by state"
                          :labels [:pool :state]})
-      ;; Kubernetes metrics -------------------------------------------------------------------------------------
+      ;; Kubernetes metrics --------------------------------------------------------------------------------------------
       (prometheus/gauge total-pods
                         {:description "Total current number of pods per compute cluster"
                          :labels [:pool]})
@@ -338,6 +357,53 @@
       (prometheus/summary offer-match-timer
                           {:description "Latency distribution of matching an offer"
                            :labels [:compute-cluster]
+                           :quantiles default-summary-quantiles})
+      ;; API metrics ---------------------------------------------------------------------------------------------------
+      (prometheus/counter jobs-created
+                          {:description "Total count of jobs created"
+                           :labels [:pool]})
+      (prometheus/summary list-request-param-time-range
+                          {:description "Distribution of time range specified in list endpoint requests"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary list-request-param-limit
+                          {:description "Distribution of instance count limit specified in list endpoint requests"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary list-response-job-count
+                          {:description "Distribution of instance count returned in list endpoint responses"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary fetch-instance-map-duration
+                          {:description "Latency distribution of converting the instance entity to a map for API responses"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary fetch-job-map-duration
+                          {:description "Latency distribution of converting the job entity to a map for API responses"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary fetch-jobs-duration
+                          {:description "Latency distribution of fetching jobs by user and state for API responses"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary list-jobs-duration
+                          {:description "Latency distribution of listing jobs for API responses"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary endpoint-duration
+                          {:description "Latency distribution of API endpoints"
+                           :labels [:endpoint]
+                           :quantiles default-summary-quantiles})
+      ;; Tools metrics -------------------------------------------------------------------------------------------------
+      (prometheus/summary get-jobs-by-user-and-state-duration
+                          {:description "Latency distribution of getting jobs by user for a particular state"
+                           :labels [:state]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-jobs-by-user-and-state-total-duration
+                          {:description "Latency distribution of getting jobs by user for a list of states"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-all-running-tasks-duration
+                          {:description "Latency distribution of getting all running tasks"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-user-running-jobs-duration
+                          {:description "Latency distribution of getting running jobs for a particular user"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-all-running-jobs-duration
+                          {:description "Latency distribution of getting all running jobs"
                            :quantiles default-summary-quantiles}))))
 
 ;; A global registry for all metrics reported by Cook.
@@ -374,7 +440,9 @@
   ([name]
    `(prometheus/inc registry ~name))
   ([name labels]
-   `(prometheus/inc registry ~name ~labels)))
+   `(prometheus/inc registry ~name ~labels))
+  ([name labels amount]
+   `(prometheus/inc registry ~name ~labels ~amount)))
 
 (defmacro observe
   "Records the value for the given metric (for histograms and summaries)."

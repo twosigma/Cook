@@ -45,7 +45,7 @@
             [cook.plugins.submission :as submission-plugin]
             [cook.pool :as pool]
             [cook.progress :as progress]
-            [cook.prometheus-metrics :as cook-prometheus]
+            [cook.prometheus-metrics :as prom]
             [cook.regexp-tools :as regexp-tools]
             [cook.queries :as queries]
             [cook.queue-limit :as queue-limit]
@@ -1168,48 +1168,50 @@
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
   [db instance]
-  (timers/time!
-    (timers/timer ["cook-mesos" "internal" "fetch-instance-map"])
-    (let [hostname (:instance/hostname instance)
-          task-id (:instance/task-id instance)
-          executor (:instance/executor instance)
-          sandbox-directory (:instance/sandbox-directory instance)
-          url-path (retrieve-sandbox-url-path instance)
-          start (:instance/start-time instance)
-          mesos-start (:instance/mesos-start-time instance)
-          end (:instance/end-time instance)
-          cancelled (:instance/cancelled instance)
-          reason (reason/instance-entity->reason-entity db instance)
-          exit-code (:instance/exit-code instance)
-          progress (:instance/progress instance)
-          progress-message (:instance/progress-message instance)
-          file-url (plugins/file-url file-plugin/plugin instance)
-          queue-time (:instance/queue-time instance)]
-      (cond-> {:backfilled false ;; Backfill has been deprecated
-               :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
-               :executor_id (:instance/executor-id instance)
-               :hostname hostname
-               :ports (vec (sort (:instance/ports instance)))
-               :preempted (:instance/preempted? instance false)
-               :agent_id (:instance/slave-id instance)
-               :slave_id (:instance/slave-id instance)
-               :status (name (:instance/status instance))
-               :task_id task-id}
-              executor (assoc :executor (name executor))
-              file-url (assoc :file_url file-url)
-              start (assoc :start_time (.getTime start))
-              mesos-start (assoc :mesos_start_time (.getTime mesos-start))
-              end (assoc :end_time (.getTime end))
-              cancelled (assoc :cancelled cancelled)
-              exit-code (assoc :exit_code exit-code)
-              url-path (assoc :output_url url-path)
-              reason (assoc :reason_code (:reason/code reason)
-                            :reason_string (:reason/string reason)
-                            :reason_mea_culpa (:reason/mea-culpa? reason))
-              progress (assoc :progress progress)
-              progress-message (assoc :progress_message progress-message)
-              sandbox-directory (assoc :sandbox_directory sandbox-directory)
-              queue-time (assoc :queue_time queue-time)))))
+  (prom/with-duration
+    prom/fetch-instance-map-duration {}
+    (timers/time!
+      (timers/timer ["cook-mesos" "internal" "fetch-instance-map"])
+      (let [hostname (:instance/hostname instance)
+            task-id (:instance/task-id instance)
+            executor (:instance/executor instance)
+            sandbox-directory (:instance/sandbox-directory instance)
+            url-path (retrieve-sandbox-url-path instance)
+            start (:instance/start-time instance)
+            mesos-start (:instance/mesos-start-time instance)
+            end (:instance/end-time instance)
+            cancelled (:instance/cancelled instance)
+            reason (reason/instance-entity->reason-entity db instance)
+            exit-code (:instance/exit-code instance)
+            progress (:instance/progress instance)
+            progress-message (:instance/progress-message instance)
+            file-url (plugins/file-url file-plugin/plugin instance)
+            queue-time (:instance/queue-time instance)]
+        (cond-> {:backfilled false ;; Backfill has been deprecated
+                 :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
+                 :executor_id (:instance/executor-id instance)
+                 :hostname hostname
+                 :ports (vec (sort (:instance/ports instance)))
+                 :preempted (:instance/preempted? instance false)
+                 :agent_id (:instance/slave-id instance)
+                 :slave_id (:instance/slave-id instance)
+                 :status (name (:instance/status instance))
+                 :task_id task-id}
+          executor (assoc :executor (name executor))
+          file-url (assoc :file_url file-url)
+          start (assoc :start_time (.getTime start))
+          mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+          end (assoc :end_time (.getTime end))
+          cancelled (assoc :cancelled cancelled)
+          exit-code (assoc :exit_code exit-code)
+          url-path (assoc :output_url url-path)
+          reason (assoc :reason_code (:reason/code reason)
+                        :reason_string (:reason/string reason)
+                        :reason_mea_culpa (:reason/mea-culpa? reason))
+          progress (assoc :progress progress)
+          progress-message (assoc :progress_message progress-message)
+          sandbox-directory (assoc :sandbox_directory sandbox-directory)
+          queue-time (assoc :queue_time queue-time))))))
 
 (defn- docker-parameter->response-map
   [{:keys [docker.param/key docker.param/value]}]
@@ -1251,76 +1253,78 @@
 
 (defn fetch-job-map-from-entity
   [db job]
-  (timers/time!
-    (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
-    (let [resources (util/job-ent->resources job)
-          groups (:group/_job job)
-          application (:job/application job)
-          disk (:disk resources)
-          expected-runtime (:job/expected-runtime job)
-          executor (:job/executor job)
-          progress-output-file (:job/progress-output-file job)
-          progress-regex-string (:job/progress-regex-string job)
-          pool (:job/pool job)
-          container (:job/container job)
-          checkpoint (:job/checkpoint job)
-          state (util/job-ent->state job)
-          constraints (->> job
-                           :job/constraint
-                           (map util/remove-datomic-namespacing)
-                           (map (fn [{:keys [attribute operator pattern]}]
-                                  (->> [attribute (str/upper-case (name operator)) pattern]
-                                       (map str)))))
-          instances (map #(fetch-instance-map db %1) (:job/instance job))
-          submit-time (util/job->submit-time job)
-          attempts-consumed (util/job-ent->attempts-consumed db job)
-          retries-remaining (- (:job/max-retries job) attempts-consumed)
-          disable-mea-culpa-retries (:job/disable-mea-culpa-retries job false)
-          submit-pool-name (:job/submit-pool-name job)
-          job-map {:command (:job/command job)
-                   :constraints constraints
-                   :cpus (:cpus resources)
-                   :disable_mea_culpa_retries disable-mea-culpa-retries
-                   :env (util/job-ent->env job)
-                   ; TODO(pschorf): Remove field
-                   :framework_id (guess-framework-id)
-                   :gpus (int (:gpus resources 0))
-                   :instances instances
-                   :labels (util/job-ent->label job)
-                   :max_retries (:job/max-retries job) ; consistent with input
-                   :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
-                   :mem (:mem resources)
-                   :name (:job/name job "cookjob")
-                   :ports (:job/ports job 0)
-                   :priority (:job/priority job util/default-job-priority)
-                   :retries_remaining retries-remaining
-                   :state state
-                   :status (name (:job/state job))
-                   :submit_time submit-time
-                   :uris (:uris resources)
-                   :user (:job/user job)
-                   :uuid (:job/uuid job)}]
-      (when (neg? retries-remaining)
-        ; TODO:
-        ; There's a bug in the retries remaining logic that
-        ; causes this number to sometimes be negative
-        (log/warn "Job" (:job/uuid job) "has negative retries remaining"
-                  {:attempts-consumed attempts-consumed
-                   :disable-mea-culpa-retries disable-mea-culpa-retries
-                   :max-retries (:job/max-retries job)
-                   :retries-remaining retries-remaining}))
-      (cond-> job-map
-              groups (assoc :groups (map #(str (:group/uuid %)) groups))
-              application (assoc :application (util/remove-datomic-namespacing application))
-              disk (assoc :disk disk)
-              expected-runtime (assoc :expected-runtime expected-runtime)
-              executor (assoc :executor (name executor))
-              progress-output-file (assoc :progress-output-file progress-output-file)
-              progress-regex-string (assoc :progress-regex-string progress-regex-string)
-              pool (assoc :pool (:pool/name pool))
-              container (assoc :container (container->response-map container))
-              checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
-              submit-pool-name (assoc :submit-pool submit-pool-name)))))
+  (prom/with-duration
+    prom/fetch-jobs-duration {}
+    (timers/time!
+      (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
+      (let [resources (util/job-ent->resources job)
+            groups (:group/_job job)
+            application (:job/application job)
+            disk (:disk resources)
+            expected-runtime (:job/expected-runtime job)
+            executor (:job/executor job)
+            progress-output-file (:job/progress-output-file job)
+            progress-regex-string (:job/progress-regex-string job)
+            pool (:job/pool job)
+            container (:job/container job)
+            checkpoint (:job/checkpoint job)
+            state (util/job-ent->state job)
+            constraints (->> job
+                             :job/constraint
+                             (map util/remove-datomic-namespacing)
+                             (map (fn [{:keys [attribute operator pattern]}]
+                                    (->> [attribute (str/upper-case (name operator)) pattern]
+                                         (map str)))))
+            instances (map #(fetch-instance-map db %1) (:job/instance job))
+            submit-time (util/job->submit-time job)
+            attempts-consumed (util/job-ent->attempts-consumed db job)
+            retries-remaining (- (:job/max-retries job) attempts-consumed)
+            disable-mea-culpa-retries (:job/disable-mea-culpa-retries job false)
+            submit-pool-name (:job/submit-pool-name job)
+            job-map {:command (:job/command job)
+                     :constraints constraints
+                     :cpus (:cpus resources)
+                     :disable_mea_culpa_retries disable-mea-culpa-retries
+                     :env (util/job-ent->env job)
+                     ; TODO(pschorf): Remove field
+                     :framework_id (guess-framework-id)
+                     :gpus (int (:gpus resources 0))
+                     :instances instances
+                     :labels (util/job-ent->label job)
+                     :max_retries (:job/max-retries job) ; consistent with input
+                     :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
+                     :mem (:mem resources)
+                     :name (:job/name job "cookjob")
+                     :ports (:job/ports job 0)
+                     :priority (:job/priority job util/default-job-priority)
+                     :retries_remaining retries-remaining
+                     :state state
+                     :status (name (:job/state job))
+                     :submit_time submit-time
+                     :uris (:uris resources)
+                     :user (:job/user job)
+                     :uuid (:job/uuid job)}]
+        (when (neg? retries-remaining)
+          ; TODO:
+          ; There's a bug in the retries remaining logic that
+          ; causes this number to sometimes be negative
+          (log/warn "Job" (:job/uuid job) "has negative retries remaining"
+                    {:attempts-consumed attempts-consumed
+                     :disable-mea-culpa-retries disable-mea-culpa-retries
+                     :max-retries (:job/max-retries job)
+                     :retries-remaining retries-remaining}))
+        (cond-> job-map
+          groups (assoc :groups (map #(str (:group/uuid %)) groups))
+          application (assoc :application (util/remove-datomic-namespacing application))
+          disk (assoc :disk disk)
+          expected-runtime (assoc :expected-runtime expected-runtime)
+          executor (assoc :executor (name executor))
+          progress-output-file (assoc :progress-output-file progress-output-file)
+          progress-regex-string (assoc :progress-regex-string progress-regex-string)
+          pool (assoc :pool (:pool/name pool))
+          container (assoc :container (container->response-map container))
+          checkpoint (assoc :checkpoint (util/job-ent->checkpoint job))
+          submit-pool-name (assoc :submit-pool submit-pool-name))))))
 
 (defn fetch-job-map
   [db job-uuid]
@@ -1727,32 +1731,39 @@
 (defn list-job-ents
   "Queries using the params from ctx and returns the jobs that were found as datomic entities."
   [db include-custom-executor? ctx]
-  (timers/time!
-    list-endpoint
-    (let [{states ::states
-           user ::user
-           start-ms ::start-ms
-           end-ms ::end-ms
-           since-hours-ago ::since-hours-ago
-           limit ::limit
-           name-filter-fn ::name-filter-fn
-           pool-name ::pool-name} ctx
-          start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
-          start (Date. ^long start-ms')
-          end (Date. ^long end-ms)
-          job-ents (->> (timers/time!
-                           fetch-jobs
-                           (util/get-jobs-by-user-and-states db user states start end limit
-                                                             name-filter-fn include-custom-executor? pool-name))
-                         (sort-by :job/submit-time)
-                         reverse)
-          job-ents (if (nil? limit)
-                      job-ents
-                      (take limit job-ents))]
-      (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
-      (histograms/update! list-request-param-limit limit)
-      (histograms/update! list-response-job-count (count job-ents))
-      job-ents)))
+  (prom/with-duration
+    prom/list-jobs-duration {}
+    (timers/time!
+      list-endpoint
+      (let [{states ::states
+             user ::user
+             start-ms ::start-ms
+             end-ms ::end-ms
+             since-hours-ago ::since-hours-ago
+             limit ::limit
+             name-filter-fn ::name-filter-fn
+             pool-name ::pool-name} ctx
+            start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
+            time-range-ms (- end-ms start-ms')
+            start (Date. ^long start-ms')
+            end (Date. ^long end-ms)
+            job-ents (->> (timers/time!
+                            fetch-jobs
+                            (util/get-jobs-by-user-and-states db user states start end limit
+                                                              name-filter-fn include-custom-executor? pool-name))
+                          (sort-by :job/submit-time)
+                          reverse)
+            job-ents (if (nil? limit)
+                       job-ents
+                       (take limit job-ents))
+            job-ents-count (count job-ents)]
+        (histograms/update! list-request-param-time-range-ms time-range-ms)
+        (histograms/update! list-request-param-limit limit)
+        (histograms/update! list-response-job-count job-ents-count)
+        (prom/observe prom/list-request-param-time-range time-range-ms)
+        (prom/observe prom/list-request-param-limit limit)
+        (prom/observe prom/list-response-job-count job-ents-count)
+        job-ents))))
 
 (defn list-jobs
   "Queries using the params from ctx and returns the job uuids that were found"
@@ -1906,7 +1917,7 @@
     {:allowed-methods [:get]
      :available-media-types ["text/plain"]
      :handle-ok (fn [_]
-                  (cook-prometheus/export))}))
+                  (prom/export))}))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -1995,6 +2006,7 @@
         (doseq [[pool-name num-jobs-in-pool] (->> job-pool-name-maps (map :pool-name) frequencies)]
           (let [pool-name (pool/pool-name-or-default pool-name)]
             (queue-limit/inc-queue-length! pool-name user num-jobs-in-pool)
+            (prom/inc prom/jobs-created {:pool pool-name} num-jobs-in-pool)
             (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
                                          (str "pool-" pool-name)])
                           num-jobs-in-pool))))
@@ -2389,19 +2401,21 @@
                         (render-error ctx))
     :handle-malformed render-error
     :handle-ok (fn [ctx]
-                 (timers/time!
-                  queue-endpoint
-                  (let [db (d/db conn)
-                        pool->queue (mesos-pending-jobs-fn)
-                        pool->user->quota (quota/create-pool->user->quota-fn db)
-                        pool->user->usage (util/pool->user->usage db)]
-                    (pc/for-map [[pool-name queue] pool->queue]
-                                pool-name (->> queue
-                                               (util/filter-pending-jobs-for-quota
-                                                 pool-name (atom {}) (atom {}) (pool->user->quota pool-name)
-                                                 (pool->user->usage pool-name)
-                                                 (util/global-pool-quota pool-name))
-                                               (take (::limit ctx)))))))))
+                 (prom/with-duration
+                   prom/endpoint-duration {:endpoint "/queue"}
+                   (timers/time!
+                     queue-endpoint
+                     (let [db (d/db conn)
+                           pool->queue (mesos-pending-jobs-fn)
+                           pool->user->quota (quota/create-pool->user->quota-fn db)
+                           pool->user->usage (util/pool->user->usage db)]
+                       (pc/for-map [[pool-name queue] pool->queue]
+                         pool-name (->> queue
+                                        (util/filter-pending-jobs-for-quota
+                                          pool-name (atom {}) (atom {}) (pool->user->quota pool-name)
+                                          (pool->user->usage pool-name)
+                                          (util/global-pool-quota pool-name))
+                                        (take (::limit ctx))))))))))
 
 ;;
 ;; /running
@@ -3072,10 +3086,12 @@
     :handle-malformed ::error
     :handle-forbidden ::error
     :handle-ok (fn [ctx]
-                 (timers/time!
-                   (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
-                   (let [job-ents (list-job-ents db false ctx)]
-                     (doall (mapv (partial fetch-job-map-from-entity db) job-ents)))))))
+                 (prom/with-duration
+                   prom/endpoint-duration {:endpoint "/list"}
+                   (timers/time!
+                     (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
+                     (let [job-ents (list-job-ents db false ctx)]
+                       (doall (mapv (partial fetch-job-map-from-entity db) job-ents))))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -3198,10 +3214,12 @@
                [true {::error (.toString e)}])))))
      :handle-ok
      (fn [ctx]
-       (timers/time!
-         stats-instances-endpoint
-         (let [{status ::status, start ::start, end ::end, name-filter-fn ::name-filter-fn} ctx]
-           (task-stats/get-stats conn status start end name-filter-fn))))}))
+       (prom/with-duration
+         prom/endpoint-duration {:endpoint "/stats/instances"}
+         (timers/time!
+           stats-instances-endpoint
+           (let [{status ::status, start ::start, end ::end, name-filter-fn ::name-filter-fn} ctx]
+             (task-stats/get-stats conn status start end name-filter-fn)))))}))
 
 ;;
 ;; /pools
