@@ -734,33 +734,36 @@
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
-  (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable"
-                         :tags {:pool pool-name :component tracing-component-tag}}]
-    (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
-                          {:pool pool-name :num-pending-jobs (count pending-jobs)})
-    (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
-          user->rate-limit-count (atom {})
-          user->passed-count (atom {})
-          considerable-jobs
-          (->> pending-jobs
-               (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
-                                                    user->quota user->usage
-                                                    (tools/global-pool-quota pool-name))
-               (filter (fn [job] (tools/job-allowed-to-start? db job)))
-               (filter launch-plugin/filter-job-launches)
-               (take num-considerable)
+  (prom/with-duration
+    prom/scheduler-pool-handler-pending-to-considerable-duration {:pool pool-name}
+    (timers/time!
+     (timers/timer (metric-title "pool-handler-considerable-jobs-duration" pool-name))
+     (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable"
+                            :tags {:pool pool-name :component tracing-component-tag}}]
+       (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
+                             {:pool pool-name :num-pending-jobs (count pending-jobs)})
+       (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+             user->rate-limit-count (atom {})
+             user->passed-count (atom {})
+             considerable-jobs
+             (->> pending-jobs
+                  (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
+                                                       user->quota user->usage
+                                                       (tools/global-pool-quota pool-name))
+                  (filter (fn [job] (tools/job-allowed-to-start? db job)))
+                  (filter launch-plugin/filter-job-launches)
+                  (take num-considerable)
                ; Force this to be taken eagerly so that the log line is accurate.
-               (doall))]
-      (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-      (log-structured/info "Job launch rate-limiting"
-                {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-                 :user->rate-limit-count @user->rate-limit-count
-                 :total-passed-count (->> @user->passed-count vals (reduce +))
-                 :user->passed-count @user->passed-count
-                 :pool pool-name})
-      considerable-jobs)))
-
+                  (doall))]
+         (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+         (log-structured/info "Job launch rate-limiting"
+                              {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                               :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                               :user->rate-limit-count @user->rate-limit-count
+                               :total-passed-count (->> @user->passed-count vals (reduce +))
+                               :user->passed-count @user->passed-count
+                               :pool pool-name})
+         considerable-jobs)))))
 
 (defn matches->jobs
   "Given a collection of matches, returns the matched jobs"
@@ -1210,12 +1213,8 @@
           (try
             (let [db (db conn)
                   pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-                  considerable-jobs (prom/with-duration
-                                      prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
-                                      (timers/time!
-                                        (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
-                                        (pending-jobs->considerable-jobs
-                                          db pending-jobs user->quota user->usage num-considerable pool-name)))
+                  considerable-jobs (pending-jobs->considerable-jobs
+                                     db pending-jobs user->quota user->usage num-considerable pool-name)
                   ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
                   {:keys [matches failures]} (prom/with-duration
                                                prom/scheduler-handle-resource-offers-match-duration {:pool pool-name}
@@ -1612,12 +1611,8 @@
           pending-jobs (get @pool-name->pending-jobs-atom pool-name)
           ;; We need to filter pending jobs based on quota so that we don't
           ;; submit beyond what users have quota to actually run.
-          jobs (prom/with-duration
-                 prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
-                 (timers/time!
-                  (timers/timer (metric-title "kubernetes-handler-considerable-jobs-duration" pool-name))
-                  (pending-jobs->considerable-jobs
-                   db pending-jobs user->quota user->usage max-considerable pool-name)))
+          jobs (pending-jobs->considerable-jobs
+                db pending-jobs user->quota user->usage max-considerable pool-name)
           job-uuids (set (map :job/uuid jobs))]
       (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count job-uuids)})
       (if (seq jobs)

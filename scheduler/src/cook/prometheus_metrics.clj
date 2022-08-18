@@ -31,7 +31,7 @@
 (def scheduler-match-cycle-duration :cook/scheduler-match-cycle-duration-seconds)
 (def scheduler-generate-user-usage-map-duration :cook/scheduler-generate-user-usage-map-duration-seconds)
 (def scheduler-handle-resource-offers-total-duration :cook/scheduler-handle-resource-offers-total-duration-seconds)
-(def scheduler-handle-resource-offers-pending-to-considerable-duration :cook/scheduler-handle-resource-offers-pending-to-considerable-duration-seconds)
+(def scheduler-pool-handler-pending-to-considerable-duration :cook/scheduler-pool-handler-pending-to-considerable-duration)
 (def scheduler-fenzo-schedule-once-duration :cook/scheduler-fenzo-schedule-once-duration-seconds)
 (def scheduler-handle-resource-offers-match-duration :cook/scheduler-handle-resource-offers-match-duration-seconds)
 (def scheduler-handle-resource-offers-matches-to-job-uuids-duration :cook/scheduler-handle-resource-offers-matches-to-job-uuids-duration-seconds)
@@ -120,7 +120,7 @@
                           {:description "Distribution of total handle-resource-offers! duration"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
-      (prometheus/summary scheduler-handle-resource-offers-pending-to-considerable-duration
+      (prometheus/summary scheduler-pool-handler-pending-to-considerable-duration
                           {:description "Distribution of filtering pending to considerable jobs duration"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
