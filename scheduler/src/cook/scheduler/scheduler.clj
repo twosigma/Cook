@@ -1567,7 +1567,7 @@
   "Generate sequence of task-metadata for jobs in a compute-cluster, suitable for Kubernetes Scheduler."
   [jobs pool-name mesos-run-as-user compute-cluster]
   (let [jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)]
-    (for [{:keys [job/name job/user job/uuid job/environment] :as job} jobs]
+    (for [job jobs]
       (let [pool-specific-resources
             ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
         (merge
@@ -1591,11 +1591,7 @@
           ; real job pod on any of the hosts that it won't be able to run on.
           :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
           :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
-                         :job {:job/pool {:pool/name pool-name}
-                               :job/environment environment
-                               :job/name name
-                               :job/user user
-                               :job/uuid uuid}
+                         :job (merge job {:job/pool {:pool/name pool-name}})
                          ; Need to pass in resources to task-metadata->pod for gpu count
                          :resources pool-specific-resources}})))))
 
