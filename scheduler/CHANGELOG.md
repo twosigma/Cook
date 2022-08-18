@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.5] - 2022-08-18
+### Added
+- Make Fenzo config pool-specific and set up for other schedulers, from @ahaysx
+- Prometheus metrics for the kubernetes, API, and tools module, from @samincheva
+- Update of synthetic pods counter metric even if the current match cycle doesn't autoscale, from @samincheva
+
+### Changed
+- Performance optimization for add-starting-pods, from @scrosby
+- Remove metatransaction filter from match, from @scrosby
+- Make job resource lookup more efficient in miss path, from @scrosby
+- Relazy some list generation in rank cycle, from @scrosby
+- Parallelize autoscale to run at the same time as main job launches, from @scrosby
+
 ## [1.62.4] - 2022-08-12
 ### Added
 - Add new JobSubmissionModifier and refactor JobRouter, from @laurameng
