@@ -1226,9 +1226,6 @@
                             :max-jobs-for-autoscaling-scaled max-jobs-for-autoscaling-scaled
                             :number-considerable-jobs number-considerable-jobs
                             :number-unmatched-jobs number-unmatched-jobs})
-      ;; This call needs to happen *after* launch-matched-tasks!
-      ;; in order to avoid autoscaling tasks taking up available
-      ;; capacity that was already matched for real Cook tasks.
       (trigger-autoscaling! filtered-autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn))))
 
 
@@ -1402,17 +1399,22 @@
                     _ (when-not no-matches?
                         ; This has to happen before we do handle-resource-offers-autoscaling-helper so that it can see
                         ; the updated
-                        (swap! pool-name->pending-jobs-atom
-                               remove-matched-jobs-from-pending-jobs
-                               matched-job-uuids pool-name)
                         (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
                                               {:pool pool-name})
+                        (swap! pool-name->pending-jobs-atom
+                               remove-matched-jobs-from-pending-jobs
+                               matched-job-uuids pool-name))
+                    autoscale-future (future
+                                       (handle-resource-offers-autoscaling-helper
+                                         pool-name->pending-jobs-atom
+                                         user->usage user->quota pool-name compute-clusters
+                                         job->acceptable-compute-clusters-fn number-considerable-jobs number-unmatched-jobs))
+                    ; This creates instances for each compute cluster and launches (parallel across compute clusters)
+                    _ (when-not no-matches?
                         (launch-matched-tasks! matches conn db (:fenzo fenzo-state) mesos-run-as-user pool-name)
-                        (update-host-reservations! rebalancer-reservation-atom matched-job-uuids))
-                    _ (handle-resource-offers-autoscaling-helper
-                        pool-name->pending-jobs-atom
-                        user->usage user->quota pool-name compute-clusters
-                        job->acceptable-compute-clusters-fn number-considerable-jobs number-unmatched-jobs)]
+                        (update-host-reservations! rebalancer-reservation-atom matched-job-uuids))]
+                ; Block until autoscale is done.
+                @autoscale-future
                 matched-head-or-no-matches?))
           (catch Throwable t
             (meters/mark! handle-resource-offer!-errors)
