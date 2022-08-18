@@ -1090,10 +1090,9 @@
                        doall
                        (run! deref)))
                 (log-structured/info "Done autoscaling" {:pool pool-name}))
-              (do
-                ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics
-                (doseq [compute-cluster autoscaling-compute-clusters]
-                  (cc/set-synthetic-pods-counters compute-cluster pool-name)))))
+              ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics
+              (doseq [compute-cluster autoscaling-compute-clusters]
+                (cc/set-synthetic-pods-counters compute-cluster pool-name))))
           (catch Throwable e
             (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))))
 
