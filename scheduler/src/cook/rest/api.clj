@@ -1173,6 +1173,7 @@
     (timers/time!
       (timers/timer ["cook-mesos" "internal" "fetch-instance-map"])
       (let [hostname (:instance/hostname instance)
+            slave-id (:instance/slave-id instance)
             task-id (:instance/task-id instance)
             executor (:instance/executor instance)
             sandbox-directory (:instance/sandbox-directory instance)
@@ -1190,13 +1191,13 @@
         (cond-> {:backfilled false ;; Backfill has been deprecated
                  :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
                  :executor_id (:instance/executor-id instance)
-                 :hostname hostname
                  :ports (vec (sort (:instance/ports instance)))
                  :preempted (:instance/preempted? instance false)
-                 :agent_id (:instance/slave-id instance)
-                 :slave_id (:instance/slave-id instance)
                  :status (name (:instance/status instance))
                  :task_id task-id}
+          hostname (assoc :hostname hostname)
+          slave-id (assoc :slave_id slave-id)
+          slave-id (assoc :agent_id slave-id)
           executor (assoc :executor (name executor))
           file-url (assoc :file_url file-url)
           start (assoc :start_time (.getTime start))
