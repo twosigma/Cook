@@ -730,7 +730,7 @@
      (when (api/kubernetes-scheduler-pod? pod)
        (when-not (= (api/pod->node-name (:pod new-state))
                     (api/pod->node-name (:pod old-state)))
-         (record-hostname new-state)))
+         (record-hostname pod)))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
        (when-not force-process?
