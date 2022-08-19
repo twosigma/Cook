@@ -1632,7 +1632,13 @@
       prom/scheduler-distribute-jobs-to-kubernetes-duration {:pool pool-name}
       (timers/time!
        (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
-       (let [handle-jobs-for-cluster-fn
+       (let [; NOTE: this is required to properly filter compute clusters to
+             ; those configured for this pool. This is done via the synthetic-pods
+             ; config, accessed via the autoscaling? method. In the future, this list
+             ; of pools should be slightly restructured to be listed one level higher,
+             ; on the compute-cluster-template config.
+             compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
+             handle-jobs-for-cluster-fn
              (fn [[compute-cluster jobs]]
                (let [kill-lock-object (cc/kill-lock-object compute-cluster)
                      task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
@@ -1666,7 +1672,7 @@
                    (finally
                      (.. kill-lock-object readLock unlock)))))]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
-         (distribute-and-handle-jobs considerable-jobs pool-name compute-clusters
+         (distribute-and-handle-jobs considerable-jobs pool-name compute-clusters-for-pool
                                      job->acceptable-compute-clusters-fn handle-jobs-for-cluster-fn)
          (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :number-launched-jobs (count considerable-jobs)}))))))
 
