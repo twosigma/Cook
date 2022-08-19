@@ -1567,7 +1567,7 @@
                  next-considerable))))))
 
 (defn job->task-txn
-  "Generate task transaction for a job."
+  "Generate task transaction for a job handled by Kubernetes Scheduler."
   [job metadata compute-cluster]
   (let [{:keys [job/last-waiting-start-time job/uuid]} job
         {:keys [executor task-id]} metadata
@@ -1582,9 +1582,11 @@
        :instance/compute-cluster (cc/db-id compute-cluster)
        :instance/executor executor
        :instance/executor-id task-id ; NB command executor uses the task-id as the executor-id
+       :instance/hostname "Unknown"
        :instance/ports []
        :instance/preempted? false
        :instance/progress 0
+       :instance/slave-id "Unknown"
        :instance/start-time instance-start-time
        :instance/status :instance.status/unknown
        :instance/task-id task-id}
