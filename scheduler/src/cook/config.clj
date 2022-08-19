@@ -496,6 +496,8 @@
                                (:schedulers pools)))
                    (empty? (:schedulers pools))
                    (assoc :schedulers default-schedulers-config)))
+     :rank (fnk [[:config {rank {:number-to-force 1000}}]]
+                rank)
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]

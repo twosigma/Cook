@@ -5,6 +5,7 @@
             [cook.config :as config]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.compute-cluster :as kcc]
+            [cook.kubernetes.controller :as controller]
             [cook.mesos.task :as task]
             [cook.test.postgres]
             [cook.scheduler.scheduler :as sched]
@@ -431,3 +432,34 @@
 (deftest test-total-resource
   (testing "gracefully handles missing resource"
     (= 3 (kcc/total-resource {"node-a" {:cpus 1} "node-b" {} "node-c" {:cpus 2}} :cpus))))
+
+(deftest test-add-starting-pods
+  (with-redefs [controller/starting-namespaced-pod-name->pod
+                (constantly
+                  {{:namespace "ns" :name "name1"} "pod1"
+                   {:namespace "ns" :name "name2"} "pod2"})]
+    (let [pods {{:namespace "ns" :name "name2"} "pod2b"
+                {:namespace "ns" :name "name3"} "pod3"}]
+      (is (= #{"pod1" "pod2" "pod3"} (into #{} (kcc/add-starting-pods nil pods))))
+      (is (= #{"pod1" "pod2"} (into #{} (kcc/add-starting-pods nil {}))))))
+  (with-redefs [controller/starting-namespaced-pod-name->pod (constantly {})]
+    (let [pods {{:namespace "ns" :name "name2"} "pod2b"
+                {:namespace "ns" :name "name3"} "pod3"}]
+      (is (= #{"pod2b" "pod3"} (into #{} (kcc/add-starting-pods nil pods))))
+      (is (= #{} (into #{} (kcc/add-starting-pods nil {})))))))
+
+
+(deftest test-add-starting-pods-reverse
+  (with-redefs [controller/starting-namespaced-pod-name->pod
+                (constantly
+                  {{:namespace "ns" :name "name1"} "pod1"
+                   {:namespace "ns" :name "name2"} "pod2"})]
+    (let [pods {{:namespace "ns" :name "name2"} "pod2b"
+                {:namespace "ns" :name "name3"} "pod3"}]
+      (is (= #{"pod1" "pod2b" "pod3"} (into #{} (kcc/add-starting-pods-reverse nil pods))))
+      (is (= #{"pod1" "pod2"} (into #{} (kcc/add-starting-pods-reverse nil {}))))))
+  (with-redefs [controller/starting-namespaced-pod-name->pod (constantly {})]
+    (let [pods {{:namespace "ns" :name "name2"} "pod2b"
+                {:namespace "ns" :name "name3"} "pod3"}]
+      (is (= #{"pod2b" "pod3"} (into #{} (kcc/add-starting-pods-reverse nil pods))))
+      (is (= #{} (into #{} (kcc/add-starting-pods-reverse nil {})))))))

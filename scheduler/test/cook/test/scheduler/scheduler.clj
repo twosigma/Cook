@@ -424,6 +424,7 @@
       j2 (d/tempid :db.part/user)
       j3 (d/tempid :db.part/user)
       j4 (d/tempid :db.part/user)
+      j5 (d/tempid :db.part/user)
       t1-1 (d/tempid :db.part/user)
       t1-2 (d/tempid :db.part/user)
       t2-1 (d/tempid :db.part/user)
@@ -493,11 +494,28 @@
                                              :resource/amount 1000.0}
                                             {:db/id (d/tempid :db.part/user)
                                              :resource/type :resource.type/cpus
-                                             :resource/amount 1.0}]}]))]
+                                             :resource/amount 1.0}]}
+                            {:db/id j5
+                             :job/command "job 5 command"
+                             :job/user "palaitis"
+                             :job/uuid #uuid "eeeeeeee-dddd-dddd-dddd-dddddddddddd"
+                             :job/resource [{:db/id (d/tempid :db.part/user)
+                                             :resource/type :resource.type/uri
+                                             :resource.uri/cache? false
+                                             :resource.uri/executable? true
+                                             :resource.uri/value "Yes1"
+                                             :resource.uri/extract? true}
+                            {:db/id (d/tempid :db.part/user)
+                             :resource/type :resource.type/uri
+                             :resource.uri/cache? true
+                             :resource.uri/executable? false
+                             :resource.uri/value "Yes2"}]}
+                            ]))]
   (def j1 (d/resolve-tempid db-after tempids j1))
   (def j2 (d/resolve-tempid db-after tempids j2))
   (def j3 (d/resolve-tempid db-after tempids j3))
   (def j4 (d/resolve-tempid db-after tempids j4))
+  (def j5 (d/resolve-tempid db-after tempids j5))
   (def t1-1 (d/resolve-tempid db-after tempids t1-1))
   (def t1-2 (d/resolve-tempid db-after tempids t1-2))
   (def t2-1 (d/resolve-tempid db-after tempids t2-1)))
@@ -506,7 +524,19 @@
   (cook.test.testutil/flush-caches!)
   (let [resources (tools/job-ent->resources (d/entity (db c) j1))]
     (is (= 1.0 (:cpus resources)))
-    (is (= 1000.0 (:mem resources)))))
+    (is (= 1000.0 (:mem resources))))
+  (testing "URI's are appended when calculating resources"
+    (let [resources (tools/job-ent->resources (d/entity (db c) j5))]
+      (is (= {:ports 0
+              :uris [{:cache false
+                      :executable true
+                      :extract true
+                      :value "Yes1"}
+                     {:cache true
+                      :executable false
+                      :extract false
+                      :value "Yes2"}]}
+             resources)))))
 
 (defrecord TestComputeCluster
   [cluster-definition]
@@ -873,7 +903,7 @@
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (testing "enough offers for all normal jobs."
       (is (= {"no-pool" (list (tools/job-ent->map job-entity))}
-             (sched/rank-jobs test-db offensive-job-filter))))))
+             (sched/rank-jobs test-db offensive-job-filter 5))))))
 
 (deftest test-mesos-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
