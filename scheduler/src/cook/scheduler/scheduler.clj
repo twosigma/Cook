@@ -1561,11 +1561,9 @@
        :instance/compute-cluster (cc/db-id compute-cluster)
        :instance/executor executor
        :instance/executor-id task-id ; NB command executor uses the task-id as the executor-id
-       :instance/hostname "Unknown"
        :instance/ports []
        :instance/preempted? false
        :instance/progress 0
-       :instance/slave-id "Unknown"
        :instance/start-time instance-start-time
        :instance/status :instance.status/unknown
        :instance/task-id task-id}
@@ -1584,11 +1582,7 @@
         (merge
          (task/job->task-metadata compute-cluster mesos-run-as-user
                                   job (jobs->task-id job))
-         {; NB: see `kubernetes/compute_cluster/autoscale!`
-          ; for how launching a real job pod without a hostname
-          ; compares to launching a synthetic pod.
-
-          ; Job constraints need to be expressed on a real job
+         {; Job constraints need to be expressed on a real job
           ; pod so that if it triggers the cluster autoscaler,
           ; CA will spin up nodes that will end up satisfying it. 
           :pod-constraints (constraints/job->constraints job)
