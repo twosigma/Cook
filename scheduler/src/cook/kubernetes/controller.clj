@@ -427,9 +427,11 @@
 
 (defn record-hostname
   "Record the hostname in Datomic for the instance. This is necessary for pods
-   submitted directly to Kubernetes without node selection. In this case, the
-   instance has no hostname and needs to be updated once the pod is scheduled
-   on a node by Kubernetes."
+   submitted directly to Kubernetes (i.e. when we let Kubernetes do bin packing
+   instead of Fenzo). In this case, the instance has no hostname and needs to be 
+   updated once the pod is scheduled on a node by Kubernetes.
+   
+   If the hostname is null, we do not write to Datomic."
   [^V1Pod pod]
   (let [pod-name (-> pod .getMetadata .getName)
         hostname (api/pod->node-name pod)]
