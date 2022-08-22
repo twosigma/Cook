@@ -1101,7 +1101,7 @@
                                                                        job->acceptable-compute-clusters-fn)]
         (log-structured/info "Starting job distribution" {:pool pool-name})
         (->> compute-cluster->jobs
-             (map (fn [launch-args] (future (launch-distributed-job-fn launch-args))))
+             (map #(future (launch-distributed-job-fn %)))
              doall
              (run! deref)))
       (log-structured/info "Done distributing jobs" {:pool pool-name}))
