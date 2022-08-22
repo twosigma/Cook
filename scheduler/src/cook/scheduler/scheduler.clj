@@ -1086,9 +1086,14 @@
                               :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
       (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
-(defn distribute-and-handle-jobs
-  "Distributes jobs across compute clusters and applies a given handler for each distribution."
-  [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn handle-jobs-for-cluster-fn]
+(defn distribute-and-launch-jobs
+  "Assign each job to a compute cluster (using configuration such as pool name and cluster
+   capability) and launch them in parallel.
+
+   A function `launch-distributed-job-fn` is used to actually do the launching. This is 
+   needed to implement the different launch logic for launching synthetic pods for 
+   autoscaling or for using the Kubernetes Scheduler directly."
+  [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn launch-distributed-job-fn]
   (try
     (when (seq jobs)
       (log-structured/info "Preparing for job distribution" {:pool pool-name})
@@ -1096,7 +1101,7 @@
                                                                        job->acceptable-compute-clusters-fn)]
         (log-structured/info "Starting job distribution" {:pool pool-name})
         (->> compute-cluster->jobs
-             (map handle-jobs-for-cluster-fn)
+             (map (fn [launch-args] (future (launch-distributed-job-fn launch-args))))
              doall
              (run! deref)))
       (log-structured/info "Done distributing jobs" {:pool pool-name}))
@@ -1116,13 +1121,13 @@
        (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
        (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
              num-autoscaling-compute-clusters (count autoscaling-compute-clusters)
-             handle-jobs-for-cluster-fn
+             launch-distributed-job-fn
              (fn [[compute-cluster jobs-for-cluster]]
-               (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn)))]
+               (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))]
 
          (if (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
-           (distribute-and-handle-jobs pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
-                                       job->acceptable-compute-clusters-fn handle-jobs-for-cluster-fn)
+           (distribute-and-launch-jobs pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
+                                       job->acceptable-compute-clusters-fn launch-distributed-job-fn)
            ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics 
            (doseq [compute-cluster autoscaling-compute-clusters]
              (cc/set-synthetic-pods-counters compute-cluster pool-name))))))))
@@ -1638,7 +1643,7 @@
              ; of pools should be slightly restructured to be listed one level higher,
              ; on the compute-cluster-template config.
              compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
-             handle-jobs-for-cluster-fn
+             launch-distributed-job-fn
              (fn [[compute-cluster jobs]]
                (let [kill-lock-object (cc/kill-lock-object compute-cluster)
                      task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
@@ -1659,21 +1664,21 @@
                        (throw e))))
                    (timers/time!
                     (timers/timer (metric-title "distribute-jobs-to-kubernetes-launch-duration" pool-name))
-                    (future (cc/launch-tasks
-                             compute-cluster pool-name [{:task-metadata-seq task-metadata-seq}]
-                             (fn process-task-post-launch!
-                               [{:keys [_ task-request]}]
-                               (let [user (get-in task-request [:job :job/user])
-                                     compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
-                                     token-key (quota/pool+user->token-key pool-name user)]
-                                 (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
-                                 (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
-                               (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})))))
+                    (cc/launch-tasks
+                     compute-cluster pool-name [{:task-metadata-seq task-metadata-seq}]
+                     (fn process-task-post-launch!
+                       [{:keys [_ task-request]}]
+                       (let [user (get-in task-request [:job :job/user])
+                             compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
+                             token-key (quota/pool+user->token-key pool-name user)]
+                         (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
+                         (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
+                       (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)}))))
                    (finally
                      (.. kill-lock-object readLock unlock)))))]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
-         (distribute-and-handle-jobs considerable-jobs pool-name compute-clusters-for-pool
-                                     job->acceptable-compute-clusters-fn handle-jobs-for-cluster-fn)
+         (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters-for-pool
+                                     job->acceptable-compute-clusters-fn launch-distributed-job-fn)
          (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :number-launched-jobs (count considerable-jobs)}))))))
 
 (defn handle-kubernetes-scheduler-pool
