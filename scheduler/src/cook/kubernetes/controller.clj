@@ -285,7 +285,7 @@
       ; NOTE: the timeout used for determining whether a pod is unschedulable
       ; depends on if it was submitted via Fenzo or Kubernetes Schedulers.
       ; TODO: simplify this logic once we are no longer using both schedulers.
-      (api/pod-unschedulable? pod-status pod)
+      (api/pod-unschedulable? pod)
       (do
         (log/info "In compute cluster" name ", encountered unschedulable pod" pod-name)
         :reason-scheduling-failed-on-host)
