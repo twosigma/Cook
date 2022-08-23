@@ -328,6 +328,27 @@
     (catch Exception e
       (log/error e "Sandbox file server URL update error"))))
 
+(defn write-hostname-to-datomic
+  "Takes a hostname for an instance and saves it to datomic."
+  [conn task-id hostname] 
+  (log-structured/debug "Writing hostname" {:task-id task-id :hostname hostname})
+  (if task-id
+    (try
+      (let [db (db conn)
+            [instance] (first (q '[:find ?i
+                                   :in $ ?task-id
+                                   :where
+                                   [?i :instance/task-id ?task-id]]
+                                 db task-id))]
+        (if (nil? instance)
+          (log-structured/error "Failed to write hostname: no instance for task-id."
+                                {:hostname hostname :task-id task-id})
+          @(d/transact conn [[:db/add instance :instance/hostname hostname]])))
+      (catch Exception e
+        (log/error e "Failed to write hostname: Datomic error")))
+    (log-structured/error "Failed to write hostname: task-id is nil."
+                          {:hostname hostname})))
+
 (defn- task-id->instance-id
   "Retrieves the instance-id given a task-id"
   [db task-id]
@@ -713,33 +734,36 @@
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
-  (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable"
-                         :tags {:pool pool-name :component tracing-component-tag}}]
-    (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
-                          {:pool pool-name :num-pending-jobs (count pending-jobs)})
-    (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
-          user->rate-limit-count (atom {})
-          user->passed-count (atom {})
-          considerable-jobs
-          (->> pending-jobs
-               (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
-                                                    user->quota user->usage
-                                                    (tools/global-pool-quota pool-name))
-               (filter (fn [job] (tools/job-allowed-to-start? db job)))
-               (filter launch-plugin/filter-job-launches)
-               (take num-considerable)
+  (prom/with-duration
+    prom/scheduler-pool-handler-pending-to-considerable-duration {:pool pool-name}
+    (timers/time!
+     (timers/timer (metric-title "pool-handler-considerable-jobs-duration" pool-name))
+     (tracing/with-span [s {:name "scheduler.pending-jobs-to-considerable"
+                            :tags {:pool pool-name :component tracing-component-tag}}]
+       (log-structured/debug (print-str "There are pending jobs:" pending-jobs)
+                             {:pool pool-name :num-pending-jobs (count pending-jobs)})
+       (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? quota/per-user-per-pool-launch-rate-limiter)
+             user->rate-limit-count (atom {})
+             user->passed-count (atom {})
+             considerable-jobs
+             (->> pending-jobs
+                  (tools/filter-pending-jobs-for-quota pool-name user->rate-limit-count user->passed-count
+                                                       user->quota user->usage
+                                                       (tools/global-pool-quota pool-name))
+                  (filter (fn [job] (tools/job-allowed-to-start? db job)))
+                  (filter launch-plugin/filter-job-launches)
+                  (take num-considerable)
                ; Force this to be taken eagerly so that the log line is accurate.
-               (doall))]
-      (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
-      (log-structured/info "Job launch rate-limiting"
-                {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
-                 :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
-                 :user->rate-limit-count @user->rate-limit-count
-                 :total-passed-count (->> @user->passed-count vals (reduce +))
-                 :user->passed-count @user->passed-count
-                 :pool pool-name})
-      considerable-jobs)))
-
+                  (doall))]
+         (swap! tools/pool->user->num-rate-limited-jobs update pool-name (constantly @user->rate-limit-count))
+         (log-structured/info "Job launch rate-limiting"
+                              {:enforcing-job-launch-rate-limit? enforcing-job-launch-rate-limit?
+                               :total-rate-limit-count (->> @user->rate-limit-count vals (reduce +))
+                               :user->rate-limit-count @user->rate-limit-count
+                               :total-passed-count (->> @user->passed-count vals (reduce +))
+                               :user->passed-count @user->passed-count
+                               :pool pool-name})
+         considerable-jobs)))))
 
 (defn matches->jobs
   "Given a collection of matches, returns the matched jobs"
@@ -1062,6 +1086,28 @@
                               :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
       (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
+(defn distribute-and-launch-jobs
+  "Assign each job to a compute cluster (using configuration such as pool name and cluster
+   capability) and launch them in parallel.
+
+   A function `launch-distributed-job-fn` is used to actually do the launching. This is 
+   needed to implement the different launch logic for launching synthetic pods for 
+   autoscaling or for using the Kubernetes Scheduler directly."
+  [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn launch-distributed-job-fn]
+  (try
+    (when (seq jobs)
+      (log-structured/info "Preparing for job distribution" {:pool pool-name})
+      (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters jobs pool-name compute-clusters
+                                                                       job->acceptable-compute-clusters-fn)]
+        (log-structured/info "Starting job distribution" {:pool pool-name})
+        (->> compute-cluster->jobs
+             (map #(future (launch-distributed-job-fn %)))
+             doall
+             (run! deref)))
+      (log-structured/info "Done distributing jobs" {:pool pool-name}))
+    (catch Throwable e
+      (log-structured/error "Encountered error while distributing jobs" {:pool pool-name} e))))
+
 (defn trigger-autoscaling!
   "Autoscales the given pool to satisfy the given pending jobs, if:
   - There is at least one pending job
@@ -1072,29 +1118,19 @@
     (prom/with-duration
       prom/scheduler-trigger-autoscaling-duration {:pool pool-name}
       (timers/time!
-        (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
-        (try
-          (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
-                num-autoscaling-compute-clusters (count autoscaling-compute-clusters)]
-            (if (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
-              (do
-                (log-structured/info "Preparing for autoscaling" {:pool pool-name})
-                (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters
-                                              pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
-                                              job->acceptable-compute-clusters-fn)]
-                  (log-structured/info "Starting autoscaling" {:pool pool-name})
-                  (->> compute-cluster->jobs
-                       (map
-                         (fn [[compute-cluster jobs-for-cluster]]
-                           (future (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))))
-                       doall
-                       (run! deref)))
-                (log-structured/info "Done autoscaling" {:pool pool-name}))
-              ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics
-              (doseq [compute-cluster autoscaling-compute-clusters]
-                (cc/set-synthetic-pods-counters compute-cluster pool-name))))
-          (catch Throwable e
-            (log-structured/error "Encountered error while triggering autoscaling" {:pool pool-name} e)))))))
+       (timers/timer (metric-title "trigger-autoscaling!-duration" pool-name))
+       (let [autoscaling-compute-clusters (filter #(cc/autoscaling? % pool-name) compute-clusters)
+             num-autoscaling-compute-clusters (count autoscaling-compute-clusters)
+             launch-distributed-job-fn
+             (fn [[compute-cluster jobs-for-cluster]]
+               (cc/autoscale! compute-cluster pool-name jobs-for-cluster adjust-job-resources-for-pool-fn))]
+
+         (if (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
+           (distribute-and-launch-jobs pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
+                                       job->acceptable-compute-clusters-fn launch-distributed-job-fn)
+           ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics 
+           (doseq [compute-cluster autoscaling-compute-clusters]
+             (cc/set-synthetic-pods-counters compute-cluster pool-name))))))))
 
 (def pool-name->unmatched-job-uuid->unmatched-cycles-atom (atom {}))
 
@@ -1252,12 +1288,8 @@
           (try
             (let [db (d/db conn)
                   pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-                  considerable-jobs (prom/with-duration
-                                      prom/scheduler-handle-resource-offers-pending-to-considerable-duration {:pool pool-name}
-                                      (timers/time!
-                                        (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
-                                        (pending-jobs->considerable-jobs
-                                          db pending-jobs user->quota user->usage num-considerable pool-name)))
+                  considerable-jobs (pending-jobs->considerable-jobs
+                                     db pending-jobs user->quota user->usage num-considerable pool-name)
                   ; matches is a vector of maps of {:hostname .. :leases .. :tasks}
                   {:keys [matches failures]} (prom/with-duration
                                                prom/scheduler-handle-resource-offers-match-duration {:pool pool-name}
@@ -1538,6 +1570,141 @@
                    (meters/mark! fenzo-abandon-and-reset-meter)
                    max-considerable)
                  next-considerable))))))
+
+(defn job->task-txn
+  "Generate task transaction for a job handled by Kubernetes Scheduler."
+  [job metadata compute-cluster]
+  (let [{:keys [job/last-waiting-start-time job/uuid]} job
+        {:keys [executor task-id]} metadata
+        job-ref [:job/uuid uuid]
+        instance-start-time (now)]
+    [[:job/allowed-to-start? job-ref]
+     ; The job will remain waiting until the instance is running.
+     [:db/add job-ref :job/state :job.state/waiting]
+     (cond->
+      {:db/id (d/tempid :db.part/user)
+       :job/_instance job-ref
+       :instance/compute-cluster (cc/db-id compute-cluster)
+       :instance/executor executor
+       :instance/executor-id task-id ; NB command executor uses the task-id as the executor-id
+       :instance/ports []
+       :instance/preempted? false
+       :instance/progress 0
+       :instance/start-time instance-start-time
+       :instance/status :instance.status/unknown
+       :instance/task-id task-id}
+       last-waiting-start-time
+       (assoc :instance/queue-time
+              (- (.getTime instance-start-time)
+                 (.getTime ^Date last-waiting-start-time))))]))
+
+(defn jobs->kubernetes-task-metadata
+  "Generate sequence of task-metadata for jobs in a compute-cluster, suitable for Kubernetes Scheduler."
+  [jobs pool-name mesos-run-as-user compute-cluster]
+  (let [jobs->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) jobs)]
+    (for [job jobs]
+      (let [pool-specific-resources
+            ((adjust-job-resources-for-pool-fn pool-name) job (tools/job-ent->resources job))]
+        (merge
+         (task/job->task-metadata compute-cluster mesos-run-as-user
+                                  job (jobs->task-id job))
+         {; Job constraints need to be expressed on a real job
+          ; pod so that if it triggers the cluster autoscaler,
+          ; CA will spin up nodes that will end up satisfying it. 
+          :pod-constraints (constraints/job->constraints job)
+
+          ; We need to label the pods handled completely by Kubernetes
+          ; so that we can treat them differently throughout the scheduler.
+          :pod-labels {"twosigma.com/cook-scheduler" "kubernetes"}
+
+          ; Cook has a "novel host constraint", which disallows a job from
+          ; running on the same host twice. So, we need to avoid running a
+          ; real job pod on any of the hosts that it won't be able to run on.
+          :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
+          :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+                         :job (merge job {:job/pool {:pool/name pool-name}})
+                         ; Need to pass in resources to task-metadata->pod for gpu count
+                         :resources pool-specific-resources}})))))
+
+(defn distribute-jobs-to-kubernetes
+  "Distributes considerable jobs across the compute clusters and launches in Kubernetes."
+  [conn considerable-jobs pool-name compute-clusters mesos-run-as-user job->acceptable-compute-clusters-fn]
+  (tracing/with-span
+    [s {:name "scheduler.distribute-jobs-to-kubernetes" :tags {:component tracing-component-tag}}]
+    (prom/with-duration
+      prom/scheduler-distribute-jobs-to-kubernetes-duration {:pool pool-name}
+      (timers/time!
+       (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
+       (let [; NOTE: this is required to properly filter compute clusters to
+             ; those configured for this pool. This is done via the synthetic-pods
+             ; config, accessed via the autoscaling? method. In the future, this list
+             ; of pools should be slightly restructured to be listed one level higher,
+             ; on the compute-cluster-template config.
+             compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
+             launch-distributed-job-fn
+             (fn [[compute-cluster jobs]]
+               (let [kill-lock-object (cc/kill-lock-object compute-cluster)
+                     task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+                     task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
+                 (try
+                   (log-structured/debug "Acquiring lock to commit tasks and and launch to Kubernetes."
+                                         {:pool pool-name :compute-cluster compute-cluster})
+                   (.. kill-lock-object readLock lock)
+                   (timers/time!
+                    (timers/timer (metric-title "distribute-jobs-to-kubernetes-transact-task-duration" pool-name))
+                    (datomic/transact
+                     conn
+                     (reduce into [] task-txns)
+                     (fn [e]
+                       (log-structured/warn "Transaction timed out, so these tasks might be present"
+                                            "in Datomic without actually having been launched in compute cluster"
+                                            {:compute-cluster compute-cluster :pool pool-name} e)
+                       (throw e))))
+                   (timers/time!
+                    (timers/timer (metric-title "distribute-jobs-to-kubernetes-launch-duration" pool-name))
+                    (cc/launch-tasks
+                     compute-cluster pool-name [{:task-metadata-seq task-metadata-seq}]
+                     (fn process-task-post-launch!
+                       [{:keys [_ task-request]}]
+                       (let [user (get-in task-request [:job :job/user])
+                             compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
+                             token-key (quota/pool+user->token-key pool-name user)]
+                         (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
+                         (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
+                       (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)}))))
+                   (finally
+                     (.. kill-lock-object readLock unlock)))))]
+         (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
+         (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters-for-pool
+                                     job->acceptable-compute-clusters-fn launch-distributed-job-fn)
+         (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :number-launched-jobs (count considerable-jobs)}))))))
+
+(defn handle-kubernetes-scheduler-pool
+  "Handle scheduling pending jobs using the Kubernetes Scheduler."
+  [conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
+   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
+  (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
+  (try
+    (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
+                                             :tags {:pool pool-name :component tracing-component-tag}}]
+                        @user->usage-future)
+          {max-considerable :max-jobs-considered} scheduler-config
+          db (db conn)
+          pending-jobs (get @pool-name->pending-jobs-atom pool-name)
+          considerable-jobs (pending-jobs->considerable-jobs db pending-jobs user->quota user->usage max-considerable pool-name)
+          considerable-job-uuids (set (map :job/uuid considerable-jobs))]
+      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count considerable-job-uuids)})
+      (if (seq considerable-jobs)
+        (do
+          (swap! pool-name->pending-jobs-atom
+                 remove-matched-jobs-from-pending-jobs
+                 considerable-job-uuids pool-name)
+          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
+                                {:pool pool-name})
+          (distribute-jobs-to-kubernetes conn considerable-jobs pool-name compute-clusters mesos-run-as-user job->acceptable-compute-clusters-fn))
+        (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
+    (catch Exception e
+      (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
 
 (defn reconcile-jobs
   "Ensure all jobs saw their final state change"
@@ -2130,11 +2297,6 @@
                 "schedule each pool less often than the desired setting of every " target-per-pool-match-interval-millis " ms."))
     (async/pipe (chime-ch (util/time-seq (time/now) (time/millis match-interval-millis))) match-trigger-chan)))
 
-(defn kubernetes-scheduler?
-  "Return true if the scheduler is Kubernetes Scheduler."
-  [scheduler-name]
-  (= "kubernetes" scheduler-name))
-
 (defn pool-scheduler-config
   "Get the scheduler config for a pool."
   [schedulers pool-name]
@@ -2152,7 +2314,7 @@
         resources-atom (atom (view-incubating-offers fenzo))
         using-pools? (not (nil? (config/default-pool)))
         scheduler-name (:scheduler scheduler-config)
-        using-kubernetes-scheduler? (kubernetes-scheduler? scheduler-name)]
+        using-kubernetes-scheduler? (= "kubernetes" scheduler-name)]
     (when-not using-kubernetes-scheduler?
       (reset! fenzo-num-considerable-atom (:fenzo-max-jobs-considered scheduler-config)))
     (tools/chime-at-ch
@@ -2184,9 +2346,12 @@
                                                 (generate-user-usage-map (d/db conn) pool-name)))
                    compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                    user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))]
-               (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache 
-                                  scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-                                  job->acceptable-compute-clusters-fn user->quota user->usage-future))
+               (if using-kubernetes-scheduler?
+                 (handle-kubernetes-scheduler-pool conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
+                                                   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user)
+                 (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache
+                                    scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
+                                    job->acceptable-compute-clusters-fn user->quota user->usage-future)))
              (catch Exception e
                (log-structured/error "Pool handler encountered exception; continuing" {:pool pool-name} e)))))
        (log-structured/info "Done with pool handler" {:pool pool-name}))
@@ -2194,9 +2359,9 @@
     resources-atom))
 
 (defn create-datomic-scheduler
-  [{:keys [conn cluster-name->compute-cluster-atom mea-culpa-failure-limit 
+  [{:keys [conn cluster-name->compute-cluster-atom mea-culpa-failure-limit
            mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
-           pool-name->pending-jobs-atom rebalancer-reservation-atom 
+           pool-name->pending-jobs-atom rebalancer-reservation-atom
            task-constraints trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)

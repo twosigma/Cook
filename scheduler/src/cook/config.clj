@@ -106,6 +106,7 @@
 
 (def default-authorization {:authorization-fn 'cook.rest.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
+
 (def default-fenzo-scheduler-config {:scheduler "fenzo"
                                      :good-enough-fitness 0.8
                                      :fenzo-fitness-calculator default-fitness-calculator
@@ -113,6 +114,10 @@
                                      :fenzo-scaleback 0.95
                                      :fenzo-floor-iterations-before-warn 10
                                      :fenzo-floor-iterations-before-reset 1000})
+(def default-kubernetes-scheduler-config {:scheduler "kubernetes"
+                                          :max-jobs-considered 1000})
+(def default-schedulers-config [{:pool-regex ".*"
+                                 :scheduler-config default-fenzo-scheduler-config}])
 
 (defrecord UserRateLimit [id quota auth-bypass-quota ttl]
   RateLimit
@@ -204,6 +209,22 @@
         (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not defined") entry)))
       (when-not (contains? valid-types default-type)
         (throw (ex-info (str "Default disk type for pool-regex " pool-regex " is not listed as a valid disk type") entry))))))
+
+(defn guard-invalid-schedulers-config
+  "When scheduler config for pools is provided, ensure each is associated with a pool and is using a valid scheduler."
+  [schedulers-config]
+  (when schedulers-config
+    (doseq [{pool-regex :pool-regex 
+             {scheduler :scheduler :as scheduler-config} :scheduler-config 
+             :as entry} schedulers-config] 
+      (when-not pool-regex
+        (throw (ex-info (str "pool-regex key is missing from config") entry)))
+      (when-not scheduler-config
+        (throw (ex-info (str "scheduler-config key is missing from config") entry)))
+      (when-not scheduler
+        (throw (ex-info (str "scheduler key is missing from scheduler-config") entry)))
+      (when-not (or (= scheduler "fenzo") (= scheduler "kubernetes"))
+        (throw (ex-info (str "scheduler must be fenzo or kubernetes") entry))))))
 
 (def config-settings
   "Parses the settings out of a config file"
@@ -448,24 +469,35 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
      :pools (fnk [[:config {pools nil}]]
-              (guard-invalid-gpu-config (:valid-gpu-models pools))
-              (guard-invalid-disk-config (:disk pools))
-              (cond-> pools
-                (:job-resource-adjustment pools)
-                (update :job-resource-adjustment
-                        #(-> %
-                           (update :pool-regex re-pattern)))
-                (not (:default-containers pools))
-                (assoc :default-containers [])
-                (not (:default-env pools))
-                (assoc :default-env [])
-                (not (:quotas pools))
-                (assoc :quotas [])
-                (not (:schedulers pools))
-                (assoc :schedulers [{:pool-regex ".*"
-                                     :scheduler-config default-fenzo-scheduler-config}])))
+                 (guard-invalid-gpu-config (:valid-gpu-models pools))
+                 (guard-invalid-disk-config (:disk pools))
+                 (guard-invalid-schedulers-config (:schedulers pools))
+                 (cond-> pools
+                   (:job-resource-adjustment pools)
+                   (update :job-resource-adjustment
+                           #(-> %
+                                (update :pool-regex re-pattern)))
+                   (not (:default-containers pools))
+                   (assoc :default-containers [])
+                   (not (:default-env pools))
+                   (assoc :default-env [])
+                   (not (:quotas pools))
+                   (assoc :quotas [])
+
+                   ; If valid configs up-to "scheduler" are provided, merge defaults
+                   (seq (:schedulers pools))
+                   (assoc :schedulers
+                          (mapv (fn [{:keys [pool-regex] {:keys [scheduler] :as scheduler-config} :scheduler-config}]
+                                 {:pool-regex pool-regex
+                                  :scheduler-config (cond
+                                                      (= scheduler "fenzo") (merge default-fenzo-scheduler-config scheduler-config)
+                                                      (= scheduler "kubernetes") (merge default-kubernetes-scheduler-config scheduler-config)
+                                                      :else (throw (ex-info (str "Unexpected scheduler configured " scheduler) {})))}) 
+                               (:schedulers pools)))
+                   (empty? (:schedulers pools))
+                   (assoc :schedulers default-schedulers-config)))
      :rank (fnk [[:config {rank {:number-to-force 1000}}]]
-             rank)
+                rank)
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :cache-working-set-size (fnk [[:config {cache-working-set-size 1000000}]]

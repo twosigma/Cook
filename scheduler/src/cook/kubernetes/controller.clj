@@ -6,6 +6,7 @@
             [cook.datomic :as datomic]
             [cook.kubernetes.api :as api]
             [cook.kubernetes.metrics :as metrics]
+            [cook.log-structured :as log-structured]
             [cook.mesos.sandbox :as sandbox]
             [cook.passport :as passport]
             [cook.prometheus-metrics :as prom]
@@ -250,9 +251,10 @@
 
 (defn container-status->failure-reason
   "Maps kubernetes failure reasons to cook failure reasons"
-  [{:keys [name]} instance-id ^V1PodStatus pod-status ^V1ContainerStatus container-status]
+  [{:keys [name]} ^V1PodStatus pod-status ^V1Pod pod ^V1ContainerStatus container-status]
   ; TODO map additional kubernetes failure reasons
-  (let [container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
+  (let [pod-name (api/V1Pod->name pod)
+        container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
         pod-status-reason (.getReason pod-status)
         pod-status-message (.getMessage pod-status)]
     (cond
@@ -263,7 +265,7 @@
       ; Check the node pod for NodeAffinity.
       (= "NodeAffinity" pod-status-reason)
       (do
-        (log/info "In compute cluster" name ", encountered NodeAffinity pod status reason for " instance-id)
+        (log/info "In compute cluster" name ", encountered NodeAffinity pod status reason for " pod-name)
         :reason-slave-removed)
 
       (and pod-status-message (or
@@ -277,27 +279,30 @@
       ; then the node didn't have enough CPUs to start the container
       (and (nil? container-status) (= "OutOfcpu" pod-status-reason))
       (do
-        (log/info "In compute cluster" name ", encountered OutOfcpu pod status reason for" instance-id)
+        (log/info "In compute cluster" name ", encountered OutOfcpu pod status reason for" pod-name)
         :reason-invalid-offers)
 
-      (api/pod-unschedulable? instance-id pod-status)
+      ; NOTE: the timeout used for determining whether a pod is unschedulable
+      ; depends on if it was submitted via Fenzo or Kubernetes Schedulers.
+      ; TODO: simplify this logic once we are no longer using both schedulers.
+      (api/pod-unschedulable? pod)
       (do
-        (log/info "In compute cluster" name ", encountered unschedulable pod" instance-id)
+        (log/info "In compute cluster" name ", encountered unschedulable pod" pod-name)
         :reason-scheduling-failed-on-host)
 
-      (api/pod-containers-not-initialized? instance-id pod-status)
+      (api/pod-containers-not-initialized? pod-name pod-status)
       (do
-        (log/info "In compute cluster" name ", encountered containers not initialized in pod" instance-id)
+        (log/info "In compute cluster" name ", encountered containers not initialized in pod" pod-name)
         :reason-container-initialization-timed-out)
 
-      (api/pod-containers-not-ready? instance-id pod-status)
+      (api/pod-containers-not-ready? pod-name pod-status)
       (do
-        (log/info "In compute cluster" name ", encountered containers not ready in pod" instance-id)
+        (log/info "In compute cluster" name ", encountered containers not ready in pod" pod-name)
         :reason-container-readiness-timed-out)
 
       :default
       (do
-        (log/warn "In compute cluster" name ", unable to determine failure reason for" instance-id
+        (log/warn "In compute cluster" name ", unable to determine failure reason for" pod-name
                   {:pod-status pod-status :container-status container-status})
         :unknown))))
 
@@ -337,8 +342,8 @@
                            :task-failed)
               reason (or reason
                          (when succeeded? :reason-normal-exit)
-                         (container-status->failure-reason compute-cluster pod-name
-                                                           pod-status job-container-status))
+                         (container-status->failure-reason compute-cluster pod-status
+                                                           pod job-container-status))
               status {:task-id {:value pod-name}
                       :state task-state
                       :reason reason}
@@ -419,6 +424,18 @@
                           (log/debug e "Unable to retrieve directory path for" task-id)
                           nil))]
       (when sandbox-url (scheduler/write-sandbox-url-to-datomic datomic/conn task-id sandbox-url)))))
+
+(defn record-hostname
+  "Record the hostname in Datomic for the instance. This is necessary for pods
+   submitted directly to Kubernetes (i.e. when we let Kubernetes do bin packing
+   instead of Fenzo). In this case, the instance has no hostname and needs to be 
+   updated once the pod is scheduled on a node by Kubernetes.
+   
+   If the hostname is null, we do not write to Datomic."
+  [^V1Pod pod]
+  (let [pod-name (-> pod .getMetadata .getName)
+        hostname (api/pod->node-name pod)]
+    (when hostname (scheduler/write-hostname-to-datomic datomic/conn pod-name hostname))))
 
 (defn handle-pod-killed
   "A pod was killed. So now we need to update the status in datomic and store the exit code."
@@ -711,6 +728,11 @@
            old-file-server-state (:sandbox-file-server-container-state old-state)]
        (when (and (= new-file-server-state :running) (not= old-file-server-state :running))
          (record-sandbox-url pod-name new-state)))
+     ; Hostname will change for pods scheduled by Kubernetes.
+     (when (api/kubernetes-scheduler-pod? pod)
+       (when-not (= (api/pod->node-name (:pod new-state))
+                    (api/pod->node-name (:pod old-state)))
+         (record-hostname pod)))
      (when (or force-process?
                (not (k8s-actual-state-equivalent? old-state new-state)))
        (when-not force-process?

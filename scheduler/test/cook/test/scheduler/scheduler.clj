@@ -2523,15 +2523,15 @@
       compute-cluster-3 {:cluster-definition
                          {:config {:location location-a}}
                          :name compute-cluster-3-name}
-      instance-first {:instance/compute-cluster
-                      {:compute-cluster/cluster-name
-                       compute-cluster-2-name}
-                      :instance/start-time 1}
-      instance-second {:instance/compute-cluster
-                       {:compute-cluster/cluster-name
-                        compute-cluster-1-name}
-                       :instance/start-time 2}
-      instances [instance-second instance-first]]
+      instance-1 {:instance/compute-cluster
+                  {:compute-cluster/cluster-name
+                   compute-cluster-2-name}
+                  :instance/start-time 1}
+      instance-2 {:instance/compute-cluster
+                  {:compute-cluster/cluster-name
+                   compute-cluster-1-name}
+                  :instance/start-time 2}
+      instances [instance-1 instance-2]]
 
   (deftest test-job->preferred-compute-clusters
     (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
@@ -2549,7 +2549,7 @@
     (is (= [compute-cluster-2]
            (sched/job->acceptable-compute-clusters
             {:job/checkpoint true
-              :job/instance [instance-first]}
+             :job/instance [instance-1]}
             [compute-cluster-1
              compute-cluster-2
              compute-cluster-3])))
@@ -2606,4 +2606,43 @@
                 [(assoc job :job/uuid (UUID/randomUUID))]
                 "test-pool"
                 [compute-cluster-2]
-                 sched/job->acceptable-compute-clusters)))))))
+                sched/job->acceptable-compute-clusters))))))
+
+  (deftest test-jobs-kubernetes-task-metadata
+    (testutil/setup)
+    (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
+            {compute-cluster-1-name compute-cluster-1
+             compute-cluster-2-name compute-cluster-2
+             compute-cluster-3-name compute-cluster-3})
+    (with-redefs [cc/use-cook-executor? (fn [_] false)]
+      (let [base-job {:job/checkpoint true :job/user "wrinkle" :job/environment "env"}]
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID) :job/name "job1")
+              job2 (assoc base-job :job/uuid (UUID/randomUUID) :job/name "job2")
+              job3 (assoc base-job :job/uuid (UUID/randomUUID) :job/name "job3")
+              jobs [job1 job2 job3]
+              compute-cluster->jobs (sched/distribute-jobs-to-compute-clusters
+                                     jobs
+                                     "test-pool"
+                                     [compute-cluster-1
+                                      compute-cluster-2
+                                      compute-cluster-3]
+                                     sched/job->acceptable-compute-clusters)
+              mesos-run-as-user "wrinkle"]
+          (doseq [[compute-cluster jobs] compute-cluster->jobs
+                  :let [task-metadata-seq (sched/jobs->kubernetes-task-metadata jobs "test-pool" mesos-run-as-user compute-cluster)]]
+            ; sanity check
+            (is (= (count task-metadata-seq)
+                   (count jobs)))
+
+            (doseq [[job metadata] (mapv vector jobs task-metadata-seq)
+                    :let [{:keys [job/name job/user job/uuid job/environment]} job
+                          metadata-job (get-in metadata [:task-request :job])]]
+              ; zipped in order of jobs (expected behavior in `handle-kubernetes-scheduler-pool` for generating task-txns)
+              (is (= (metadata-job :job/uuid)
+                     uuid))
+              (is (= (metadata-job :job/name)
+                     name))
+              (is (= (metadata-job :job/user)
+                     user))
+              (is (= (metadata-job :job/environment)
+                     environment)))))))))

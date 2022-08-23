@@ -223,13 +223,13 @@
   {:status s/Str
    :task_id s/Uuid
    :executor_id s/Uuid
-   :agent_id s/Str
-   :slave_id s/Str
-   :hostname s/Str
    :preempted s/Bool
    :backfilled s/Bool
    :ports [s/Int]
    :compute-cluster ComputeCluster
+   (s/optional-key :agent_id) s/Str
+   (s/optional-key :slave_id) s/Str
+   (s/optional-key :hostname) s/Str
    (s/optional-key :start_time) s/Int
    (s/optional-key :mesos_start_time) s/Int
    (s/optional-key :end_time) s/Int
@@ -1173,6 +1173,7 @@
     (timers/time!
       (timers/timer ["cook-mesos" "internal" "fetch-instance-map"])
       (let [hostname (:instance/hostname instance)
+            slave-id (:instance/slave-id instance)
             task-id (:instance/task-id instance)
             executor (:instance/executor instance)
             sandbox-directory (:instance/sandbox-directory instance)
@@ -1190,11 +1191,18 @@
         (cond-> {:backfilled false ;; Backfill has been deprecated
                  :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
                  :executor_id (:instance/executor-id instance)
-                 :hostname hostname
+                 ; NOTE: the CLI requires hostname, slave-id, and agent-id to be non-nil. An instance's
+                 ; pod which is scheduled by Kubernetes instead of Fenzo, does not initially have a
+                 ; hostname, for example. We avoid setting fake data in this case on the instance in
+                 ; Datomic and choose to return it at the API layer.
+                 ;
+                 ; TODO: stop this workaround once the CLI supports these as optional.
+                 :hostname (or hostname "Unknown")
+                 :slave_id (or slave-id "Unknown")
+                 :agent_id (or slave-id "Unknown")
+
                  :ports (vec (sort (:instance/ports instance)))
                  :preempted (:instance/preempted? instance false)
-                 :agent_id (:instance/slave-id instance)
-                 :slave_id (:instance/slave-id instance)
                  :status (name (:instance/status instance))
                  :task_id task-id}
           executor (assoc :executor (name executor))

@@ -78,6 +78,11 @@
   [pod-name]
   (str/starts-with? pod-name cook-synthetic-pod-name-prefix))
 
+(defn kubernetes-scheduler-pod?
+  "Given a pod, returns true if its scheduling is handled by Kubernetes."
+  [^V1Pod pod]
+  (= "kubernetes" (some-> pod .getMetadata .getLabels (.get "twosigma.com/cook-scheduler"))))
+
 (defn pod-name->job-uuid
   "If a pod is synthetic, return the uuid of the job it was created for"
   [pod-name]
@@ -1816,26 +1821,28 @@
 (defn pod-unschedulable?
   "Returns true if the given pod status has a PodScheduled
   condition with status False and reason Unschedulable"
-  [pod-name ^V1PodStatus pod-status]
-  (let [{:keys [pod-condition-unschedulable-seconds
+  [^V1Pod pod]
+  (let [pod-status (.getStatus pod)
+        {:keys [pod-condition-unschedulable-seconds
                 synthetic-pod-condition-unschedulable-seconds]}
         (config/kubernetes)
         unschedulable-seconds
-        (if (some-> pod-name synthetic-pod?)
+        (if (or (some-> (V1Pod->name pod) synthetic-pod?)
+                (some-> pod kubernetes-scheduler-pod?))
           synthetic-pod-condition-unschedulable-seconds
           pod-condition-unschedulable-seconds)]
     (some->> pod-status
              .getConditions
              (some
-               (fn pod-condition-unschedulable?
-                 [^V1PodCondition condition]
-                 (and (-> condition .getType (= "PodScheduled"))
-                      (-> condition .getStatus (= "False"))
-                      (-> condition .getReason (= "Unschedulable"))
-                      (-> condition
-                          .getLastTransitionTime
-                          (t/plus (t/seconds unschedulable-seconds))
-                          (t/before? (t/now)))))))))
+              (fn pod-condition-unschedulable?
+                [^V1PodCondition condition]
+                (and (-> condition .getType (= "PodScheduled"))
+                     (-> condition .getStatus (= "False"))
+                     (-> condition .getReason (= "Unschedulable"))
+                     (-> condition
+                         .getLastTransitionTime
+                         (t/plus (t/seconds unschedulable-seconds))
+                         (t/before? (t/now)))))))))
 
 (defn pod-has-stuck-condition?
   "Returns true if the given pod status has a pod condition that is deemed stuck,
@@ -1996,7 +2003,7 @@
                 ; if the ToBeDeletedByClusterAutoscaler taint gets added between when we
                 ; saw available capacity on a node and when we submitted the pod to that
                 ; node, then the pod will never get scheduled.
-                (pod-unschedulable? pod-name pod-status)
+                (pod-unschedulable? pod)
                 (let [synthesized-state {:state :pod/failed
                                          :reason "Unschedulable"}]
                   (log-structured/info "Encountered unschedulable pod"

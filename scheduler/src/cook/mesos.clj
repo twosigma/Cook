@@ -33,7 +33,6 @@
             [datomic.api :as d :refer [q]]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :refer [db]]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [plumbing.core :refer [map-from-keys]]
