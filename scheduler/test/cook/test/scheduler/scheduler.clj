@@ -2646,3 +2646,10 @@
                      user))
               (is (= (metadata-job :job/environment)
                      environment)))))))))
+
+(deftest test-write-hostname-to-datomic
+  (let [uri "datomic:mem://test-write-hostname-to-datomic"
+        conn (restore-fresh-database! uri)
+        [job inst] (create-running-job conn "init-host"
+                                       :user "alexh" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)]
+    (is (= "init-host" (:instance/hostname inst)))))
