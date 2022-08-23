@@ -82,6 +82,7 @@
                    :prior-instance-status prior-instance-status
                    :prior-job-state prior-job-state
                    :state state})
+        (prom/inc prom/mesos-tasks-killed-in-status-update)
         (meters/mark! (meters/meter (sched/metric-title "tasks-killed-in-status-update" pool-name)))
         (cc/safe-kill-task compute-cluster task-id))
       ; Mesomatic doesn't have a mapping for REASON_TASK_KILLED_DURING_LAUNCH
@@ -140,6 +141,7 @@
         (comment "TODO: Rescind the offer in fenzo"))
       (framework-message
         [this driver executor-id slave-id message]
+        (prom/inc prom/mesos-handle-framework-message)
         (meters/mark! handle-framework-message-rate)
         (try
           (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
@@ -160,6 +162,7 @@
       (error
         [this driver message]
         (meters/mark! mesos-error)
+        (prom/inc prom/mesos-error)
         (log/error "Got a mesos error!!!!" message))
       (resource-offers
         [this driver raw-offers]
@@ -193,6 +196,7 @@
           (log/debug "Finished receiving offers for all pools")))
       (status-update
         [this driver status]
+        (prom/inc prom/mesos-handle-status-update)
         (meters/mark! handle-status-update-rate)
         (let [task-id (-> status :task-id :value)]
           (sched/async-in-order-processing
@@ -303,6 +307,7 @@
     (->> (tools/read-chan (pool->offers-chan pool-name) offer-chan-size)
          ((fn decrement-offer-chan-depth [offer-lists]
             (counters/dec! offer-chan-depth (count offer-lists))
+            (prom/dec prom/mesos-offer-chan-depth {:pool pool-name} (count offer-lists))
             offer-lists))
          (reduce into [])))
 

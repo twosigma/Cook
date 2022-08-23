@@ -98,6 +98,24 @@
 (def pod-running-duration :cook/scheduler-kubernetes-pod-duration-until-running-seconds)
 (def offer-match-timer :cook/scheduler-kubernetes-offer-match-duration-seconds)
 
+;; Mesos metrics
+(def mesos-heartbeats :cook/scheduler-mesos-heartbeats-count)
+(def mesos-heartbeat-timeouts :cook/scheduler-mesos-heartbeat-timeouts-count)
+(def mesos-datomic-sync-duration :cook/scheduler-mesos-heartbeat-datomic-sync-duration-seconds)
+(def mesos-offer-chan-depth :cook/scheduler-mesos-offer-chan-depth)
+(def mesos-error :cook/scheduler-mesos-error-count)
+(def mesos-handle-framework-message :cook/scheduler-mesos-handle-framework-message)
+(def mesos-handle-status-update :cook/scheduler-mesos-handle-status-update)
+(def mesos-tasks-killed-in-status-update :cook/scheduler-mesos-tasks-killed-in-status-update-count)
+(def mesos-aggregator-pending-count :cook/scheduler-mesos-aggregator-pending-count)
+(def mesos-pending-sync-host-count :cook/scheduler-mesos-pending-sync-host-count)
+(def mesos-updater-unprocessed-count :cook/scheduler-mesos-field-updater-unprocessed-count)
+(def mesos-aggregator-message :cook/scheduler-mesos-field-aggregator-message-count)
+(def mesos-updater-publish-duration :cook/scheduler-mesos-field-updater-publish-duration-seconds)
+(def mesos-updater-transact-duration :cook/scheduler-mesos-field-updater-transact-duration-seconds)
+(def mesos-updater-pending-entries :cook/scheduler-mesos-field-updater-pending-entries-distribution)
+(def mesos-updater-unprocessed-entries :cook/scheduler-mesos-unprocessed-entries-distribution)
+
 ;; API metrics
 (def jobs-created :cook/api-jobs-created)
 (def list-request-param-time-range :cook/api-list-request-param-time-range-millis)
@@ -363,6 +381,50 @@
                           {:description "Latency distribution of matching an offer"
                            :labels [:compute-cluster]
                            :quantiles default-summary-quantiles})
+      ;; Mesos metrics -------------------------------------------------------------------------------------------------
+      (prometheus/counter mesos-heartbeats
+                          {:description "Count of mesos heartbeats"})
+      (prometheus/counter mesos-heartbeat-timeouts
+                          {:description "Count of mesos heartbeat timeouts"})
+      (prometheus/summary mesos-datomic-sync-duration
+                          {:description "Latency distribution of mesos datomic sync duration"
+                           :quantiles default-summary-quantiles})
+      (prometheus/gauge mesos-offer-chan-depth
+                          {:description "Depth of mesos offer channel"
+                           :labels [:pool]})
+      (prometheus/counter mesos-error
+                          {:description "Count of errors in mesos"})
+      (prometheus/counter mesos-handle-framework-message
+                          {:description "Count of framework messages received in mesos"})
+      (prometheus/counter mesos-handle-status-update
+                          {:description "Count of status updates received in mesos"})
+      (prometheus/counter mesos-tasks-killed-in-status-update
+                          {:description "Count of tasks killed during status updates in mesos"})
+      (prometheus/gauge mesos-aggregator-pending-count
+                          {:description "Count of pending entries in the aggregator"
+                           :labels [:field-name]})
+      (prometheus/gauge mesos-pending-sync-host-count
+                          {:description "Count of pending sync hosts"})
+      (prometheus/gauge mesos-updater-unprocessed-count
+                          {:description "Count of unprocessed tasks in mesos"
+                           :labels []})
+      (prometheus/summary mesos-updater-unprocessed-entries
+                          {:description "Distribution of count of unprocessed entries"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary mesos-updater-pending-entries
+                          {:description "Distribution of count of pending entries"
+                           :quantiles default-summary-quantiles})
+      (prometheus/counter mesos-aggregator-message
+                          {:description "Count of messages received by the aggregator"
+                           :labels [:field-name]})
+      (prometheus/summary mesos-updater-publish-duration
+                          {:description "Latency distribution of mesos updater publish duration"
+                           :labels [:field-name]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary mesos-updater-transact-duration
+                          {:description "Latency distribution of mesos updater transact duration"
+                           :labels [:field-name]
+                           :quantiles default-summary-quantiles})
       ;; API metrics ---------------------------------------------------------------------------------------------------
       (prometheus/counter jobs-created
                           {:description "Total count of jobs created"
@@ -415,6 +477,14 @@
 ;; All metrics must be registered before they can be recorded.
 (mount/defstate registry :start (create-registry))
 
+(defmacro value
+  "Get the value of the given metric."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/value registry ~name))
+  ([name labels]
+   `(prometheus/value registry ~name ~labels)))
+
 (defmacro with-duration
   "Wraps the given block and records its execution time to the collector with the given name.
   If using a collector with no labels, pass {} for the labels value."
@@ -441,13 +511,23 @@
 
 (defmacro inc
   "Increments the value of the given metric."
-  {:arglists '([name] [name labels])}
+  {:arglists '([name] [name labels] [name labels amount])}
   ([name]
    `(prometheus/inc registry ~name))
   ([name labels]
    `(prometheus/inc registry ~name ~labels))
   ([name labels amount]
    `(prometheus/inc registry ~name ~labels ~amount)))
+
+(defmacro dec
+  "Decrements the value of the given metric."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/dec registry ~name))
+  ([name labels]
+   `(prometheus/dec registry ~name ~labels))
+  ([name labels amount]
+   `(prometheus/dec registry ~name ~labels ~amount)))
 
 (defmacro observe
   "Records the value for the given metric (for histograms and summaries)."
