@@ -19,6 +19,7 @@
             [clj-time.core :as time]
             [clojure.core.async :as async :refer [>! alts! go go-loop]]
             [clojure.tools.logging :as log]
+            [cook.prometheus-metrics :as prom]
             [cook.util :as util]
             [datomic.api :as d :refer [q]]
             [metatransaction.core :refer [db]]
@@ -84,28 +85,30 @@
   "Synchronize state with datomic database.
    It will add new timeout channels for missing tasks which are using custom executor."
   [[timeout-chs task->ch ch->task] db]
-  (timers/time!
-    datomic-sync-duration
-    (let [missing-task-ids (->> (q '[:find ?task-id ?job
-                                     :in $ [?status ...]
-                                     :where
-                                     [?i :instance/status ?status]
-                                     [?i :instance/task-id ?task-id]
-                                     [?job :job/instance ?i]]
-                                   db [:instance.status/unknown :instance.status/running])
-                                ;; Filter out tasks which have been tracked and tasks which do not use custom executor.
-                                (keep (fn [[task-id job]]
-                                       ;; If the custom-executor attr is not set, it by default uses a custom executor.
-                                       (when (and (not (contains? task->ch task-id))
-                                                  (:job/custom-executor (d/entity db job) true))
-                                         task-id))))
-          missing-chs (repeatedly (count missing-task-ids) create-timeout-ch)
-          new-timeout-chs (into timeout-chs missing-chs)
-          new-task->ch (merge task->ch (zipmap missing-task-ids missing-chs))
-          new-ch->task (merge ch->task (zipmap missing-chs missing-task-ids))]
-      (when (seq missing-task-ids)
-        (log/info "Found running tasks in datomic that don't have timeout channels. Tasks:" missing-task-ids))
-      [new-timeout-chs new-task->ch new-ch->task])))
+  (prom/with-duration
+    prom/mesos-datomic-sync-duration {}
+    (timers/time!
+      datomic-sync-duration
+      (let [missing-task-ids (->> (q '[:find ?task-id ?job
+                                       :in $ [?status ...]
+                                       :where
+                                       [?i :instance/status ?status]
+                                       [?i :instance/task-id ?task-id]
+                                       [?job :job/instance ?i]]
+                                     db [:instance.status/unknown :instance.status/running])
+                                  ;; Filter out tasks which have been tracked and tasks which do not use custom executor.
+                                  (keep (fn [[task-id job]]
+                                          ;; If the custom-executor attr is not set, it by default uses a custom executor.
+                                          (when (and (not (contains? task->ch task-id))
+                                                     (:job/custom-executor (d/entity db job) true))
+                                            task-id))))
+            missing-chs (repeatedly (count missing-task-ids) create-timeout-ch)
+            new-timeout-chs (into timeout-chs missing-chs)
+            new-task->ch (merge task->ch (zipmap missing-task-ids missing-chs))
+            new-ch->task (merge ch->task (zipmap missing-chs missing-task-ids))]
+        (when (seq missing-task-ids)
+          (log/info "Found running tasks in datomic that don't have timeout channels. Tasks:" missing-task-ids))
+        [new-timeout-chs new-task->ch new-ch->task]))))
 
 (defn transact-timeout-async
   "Takes a timeout txn and transact it asynchronously. Log timeout warning if this txn does actually timeout the task.
@@ -141,6 +144,7 @@
                            (= heartbeat-ch ch)
                            (try
                              (meters/mark! heartbeats)
+                             (prom/inc prom/mesos-heartbeats)
                              (let [{:strs [task-id timestamp]} v
                                    new-ch (create-timeout-ch)
                                    state' (update-heartbeat state task-id new-ch)]
@@ -162,6 +166,7 @@
                            (timeout-chs ch)
                            (try
                              (meters/mark! timeouts)
+                             (prom/inc prom/mesos-heartbeat-timeouts)
                              (let [[state' task-id txn] (handle-timeout state (db conn) ch)]
                                (transact-timeout-async conn task-id txn)
                                state')
