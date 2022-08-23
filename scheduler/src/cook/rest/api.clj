@@ -1191,13 +1191,20 @@
         (cond-> {:backfilled false ;; Backfill has been deprecated
                  :compute-cluster (fetch-compute-cluster-map db (:instance/compute-cluster instance))
                  :executor_id (:instance/executor-id instance)
+                 ; NOTE: the CLI requires hostname, slave-id, and agent-id to be non-nil. An instance's
+                 ; pod which is scheduled by Kubernetes instead of Fenzo, does not initially have a
+                 ; hostname, for example. We avoid setting fake data in this case on the instance in
+                 ; Datomic and choose to return it at the API layer.
+                 ;
+                 ; TODO: stop this workaround once the CLI supports these as optional.
+                 :hostname (or hostname "Unknown")
+                 :slave_id (or slave-id "Unknown")
+                 :agent_id (or slave-id "Unknown")
+
                  :ports (vec (sort (:instance/ports instance)))
                  :preempted (:instance/preempted? instance false)
                  :status (name (:instance/status instance))
                  :task_id task-id}
-          hostname (assoc :hostname hostname)
-          slave-id (assoc :slave_id slave-id)
-          slave-id (assoc :agent_id slave-id)
           executor (assoc :executor (name executor))
           file-url (assoc :file_url file-url)
           start (assoc :start_time (.getTime start))
