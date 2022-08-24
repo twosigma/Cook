@@ -2646,3 +2646,23 @@
                      user))
               (is (= (metadata-job :job/environment)
                      environment)))))))))
+
+(deftest test-write-sandbox-url-to-datomic
+  (setup)
+  (let [uri "datomic:mem://test-write-sandbox-url-to-datomic"
+        conn (restore-fresh-database! uri)
+        [_ inst] (create-running-job conn "init-host" :user "alexh" :ncpus 1.0 :memory 3.0)
+        test-db (d/db conn)
+        task-id (-> (d/entity test-db inst) :instance/task-id)]
+    (sched/write-sandbox-url-to-datomic conn task-id "new-sandbox-url")
+    (is (= "new-sandbox-url" (-> (d/entity (d/db conn) inst) :instance/sandbox-url)))))
+
+(deftest test-write-hostname-to-datomic
+  (setup)
+  (let [uri "datomic:mem://test-write-hostname-to-datomic"
+        conn (restore-fresh-database! uri)
+        [_ inst] (create-running-job conn "init-host" :user "alexh" :ncpus 1.0 :memory 3.0)
+        test-db (d/db conn)
+        task-id (-> (d/entity test-db inst) :instance/task-id)]
+    (sched/write-hostname-to-datomic conn task-id "new-host")
+    (is (= "new-host" (-> (d/entity (d/db conn) inst) :instance/hostname)))))

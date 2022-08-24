@@ -210,123 +210,117 @@
 (defn write-status-to-datomic
   "Takes a status update from mesos."
   [conn pool-name->fenzo-state status]
-  (log/info "Instance status is:" status)
-    (prom/with-duration
-      prom/scheduler-handle-status-update-duaration {}
-      (timers/time!
-        handle-status-update-duration
-        (try (let [db (db conn)
-                   {:keys [task-id reason task-state progress]} (interpret-task-status status)
-                   _ (when-not task-id
-                       (throw (ex-info "task-id is nil. Something unexpected has happened."
-                                       {:status status
-                                        :task-id task-id
-                                        :reason reason
-                                        :task-state task-state
-                                        :progress progress})))
-                   [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
-                                                                    :in $ ?task-id
-                                                                    :where
-                                                                    [?i :instance/task-id ?task-id]
-                                                                    [?i :instance/status ?s]
-                                                                    [?s :db/ident ?status]
-                                                                    [?j :job/instance ?i]]
-                                                                  db task-id))
-                   job-ent (d/entity db job)
-                   instance-ent (d/entity db instance)
-                   previous-reason (reason/instance-entity->reason-entity db instance-ent)
-                   instance-status (condp contains? task-state
-                                     #{:task-staging} :instance.status/unknown
-                                     #{:task-starting
-                                       :task-running} :instance.status/running
-                                     #{:task-finished} :instance.status/success
-                                     #{:task-failed
-                                       :task-killed
-                                       :task-lost
-                                       :task-error} :instance.status/failed)
-                   prior-job-state (:job/state (d/entity db job))
-                   ^Date current-time (now)
-                   ^Date start-time (or (:instance/start-time instance-ent) current-time)
-                   instance-runtime (- (.getTime current-time) ; Used for reporting
-                                       (.getTime start-time))
-                   job-resources (tools/job-ent->resources job-ent)
-                   pool-name (cached-queries/job->pool-name job-ent)
-                   unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
-               (when (#{:instance.status/success :instance.status/failed} instance-status)
-                 (if unassign-task-set
-                   (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
-                   (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
-                                         {:pool pool-name :task-id task-id})))
-               (when (= instance-status :instance.status/success)
-                 (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
-                 (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
-               (when (= instance-status :instance.status/failed)
-                 (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
-                 (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
-                 (when-not previous-reason
-                   (update-reason-metrics! db task-id reason instance-runtime job-resources)))
-               (when-not (nil? instance)
-                 (log/debug "Transacting updated state for instance" instance "to status" instance-status)
+  (prom/with-duration
+    prom/scheduler-handle-status-update-duaration {}
+    (timers/time!
+     handle-status-update-duration
+     (let [{:keys [task-id reason task-state progress]} (interpret-task-status status)]
+       (log-structured/info "Writing instance status" {:task-id task-id :status status})
+       (if task-id
+         (try
+           (let [db (db conn)
+                 [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
+                                                                  :in $ ?task-id
+                                                                  :where
+                                                                  [?i :instance/task-id ?task-id]
+                                                                  [?i :instance/status ?s]
+                                                                  [?s :db/ident ?status]
+                                                                  [?j :job/instance ?i]]
+                                                                db task-id))
+                 job-ent (d/entity db job)
+                 instance-ent (d/entity db instance)
+                 previous-reason (reason/instance-entity->reason-entity db instance-ent)
+                 instance-status (condp contains? task-state
+                                   #{:task-staging} :instance.status/unknown
+                                   #{:task-starting
+                                     :task-running} :instance.status/running
+                                   #{:task-finished} :instance.status/success
+                                   #{:task-failed
+                                     :task-killed
+                                     :task-lost
+                                     :task-error} :instance.status/failed)
+                 prior-job-state (:job/state (d/entity db job))
+                 ^Date current-time (now)
+                 ^Date start-time (or (:instance/start-time instance-ent) current-time)
+                 instance-runtime (- (.getTime current-time) ; Used for reporting
+                                     (.getTime start-time))
+                 job-resources (tools/job-ent->resources job-ent)
+                 pool-name (cached-queries/job->pool-name job-ent)
+                 unassign-task-set (some-> pool-name pool-name->fenzo-state :unassign-task-set)]
+             (when (#{:instance.status/success :instance.status/failed} instance-status)
+               (if unassign-task-set
+                 (swap! unassign-task-set conj {:task-id task-id :hostname (:instance/hostname instance-ent)})
+                 (log-structured/error (print-str "Unable to unassign task from" (:instance/hostname instance-ent) "because fenzo state or unassign-task-set is nil:" (keys pool-name->fenzo-state))
+                                       {:pool pool-name :task-id task-id})))
+             (when (= instance-status :instance.status/success)
+               (handle-throughput-metrics job-resources instance-runtime :succeeded pool-name)
+               (handle-throughput-metrics job-resources instance-runtime :completed pool-name))
+             (when (= instance-status :instance.status/failed)
+               (handle-throughput-metrics job-resources instance-runtime :failed pool-name)
+               (handle-throughput-metrics job-resources instance-runtime :completed pool-name)
+               (when-not previous-reason
+                 (update-reason-metrics! db task-id reason instance-runtime job-resources)))
+             (when-not (nil? instance)
+               (log/debug "Transacting updated state for instance" instance "to status" instance-status)
                  ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
                  ;; transaction; see the comment in the definition of :instance/update-state for more details
-                 (let [transaction-chan (datomic/transact-with-retries
-                                          conn
-                                          (reduce
-                                            into
-                                            [[:instance/update-state
-                                              instance
-                                              instance-status
-                                              (or (:db/id previous-reason)
-                                                  (reason/mesos-reason->cook-reason-entity-id db task-id reason)
-                                                  [:reason.name :unknown])]]
-                                            [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                               [[:db/add
-                                                 instance
-                                                 :instance/reason
-                                                 (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
-                                             (when (and (#{:instance.status/success
-                                                           :instance.status/failed} instance-status)
-                                                        (nil? (:instance/end-time instance-ent)))
-                                               [[:db/add instance :instance/end-time (now)]])
-                                             (when (and (#{:task-starting :task-running} task-state)
-                                                        (nil? (:instance/mesos-start-time instance-ent)))
-                                               [[:db/add instance :instance/mesos-start-time (now)]])
-                                             (when progress
-                                               [[:db/add instance :instance/progress progress]])]))]
-                   (async/go
-                     ; Wait for the transcation to complete before running the plugin
-                     (let [chan-result (async/<! transaction-chan)]
-                       (when (#{:instance.status/success :instance.status/failed} instance-status)
-                         (let [db (d/db conn)
-                               updated-job (d/entity db job)
-                               updated-instance (d/entity db instance)]
-                           (try
-                             (plugins/on-instance-completion completion/plugin updated-job updated-instance)
-                             (catch Exception e
-                               (log/error e "Error while running instance completion plugin.")))))
-                       chan-result)))))
-             (catch Exception e
-               (log/error e "Mesos scheduler status update error"))))))
-
+               (let [transaction-chan (datomic/transact-with-retries
+                                       conn
+                                       (reduce
+                                        into
+                                        [[:instance/update-state
+                                          instance
+                                          instance-status
+                                          (or (:db/id previous-reason)
+                                              (reason/mesos-reason->cook-reason-entity-id db task-id reason)
+                                              [:reason.name :unknown])]]
+                                        [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                           [[:db/add
+                                             instance
+                                             :instance/reason
+                                             (reason/mesos-reason->cook-reason-entity-id db task-id reason)]])
+                                         (when (and (#{:instance.status/success
+                                                       :instance.status/failed} instance-status)
+                                                    (nil? (:instance/end-time instance-ent)))
+                                           [[:db/add instance :instance/end-time (now)]])
+                                         (when (and (#{:task-starting :task-running} task-state)
+                                                    (nil? (:instance/mesos-start-time instance-ent)))
+                                           [[:db/add instance :instance/mesos-start-time (now)]])
+                                         (when progress
+                                           [[:db/add instance :instance/progress progress]])]))]
+                 (async/go
+                   ; Wait for the transcation to complete before running the plugin
+                   (let [chan-result (async/<! transaction-chan)]
+                     (when (#{:instance.status/success :instance.status/failed} instance-status)
+                       (let [db (d/db conn)
+                             updated-job (d/entity db job)
+                             updated-instance (d/entity db instance)]
+                         (try
+                           (plugins/on-instance-completion completion/plugin updated-job updated-instance)
+                           (catch Exception e
+                             (log/error e "Error while running instance completion plugin.")))))
+                     chan-result)))))
+           (catch Exception e
+             (log/error e "Failed to write status")))
+         (log-structured/error "Failed to write status: task-id is nil."
+                               {:status status}))))))
+     
 (defn write-sandbox-url-to-datomic
   "Takes a sandbox file server URL from the compute cluster and saves it to datomic."
   [conn task-id sandbox-url]
-  (try
-    (let [db (db conn)
-          _ (when-not task-id
-              (throw (ex-info "task-id is nil. Something unexpected has happened."
-                              {:sandbox-url sandbox-url
-                               :task-id task-id})))
-          [instance] (first (q '[:find ?i
-                                 :in $ ?task-id
-                                 :where
-                                 [?i :instance/task-id ?task-id]]
-                               db task-id))]
-      (if (nil? instance)
-        (log/error "Sandbox file server URL update error. No instance for task-id" task-id)
-        @(d/transact conn [[:db/add instance :instance/sandbox-url sandbox-url]])))
-    (catch Exception e
-      (log/error e "Sandbox file server URL update error"))))
+  (log-structured/debug "Writing sandbox-url" {:task-id task-id :sandbox-url sandbox-url})
+  (if task-id
+    (try
+      (let [db (db conn)
+            instance (queries/task-id->instance-id db task-id)]
+        (if (nil? instance)
+          (log-structured/error "Failed to write sandbox-url: no instance for task-id."
+                                {:sandbox-url sandbox-url :task-id task-id})
+          @(d/transact conn [[:db/add instance :instance/sandbox-url sandbox-url]])))
+      (catch Exception e
+        (log/error e "Failed to write sandbox-url: Datomic error")))
+    (log-structured/error "Failed to write sandbox-url: task-id is nil."
+                          {:sandbox-url sandbox-url})))
 
 (defn write-hostname-to-datomic
   "Takes a hostname for an instance and saves it to datomic."
@@ -335,11 +329,7 @@
   (if task-id
     (try
       (let [db (db conn)
-            [instance] (first (q '[:find ?i
-                                   :in $ ?task-id
-                                   :where
-                                   [?i :instance/task-id ?task-id]]
-                                 db task-id))]
+            instance (queries/task-id->instance-id db task-id)]
         (if (nil? instance)
           (log-structured/error "Failed to write hostname: no instance for task-id."
                                 {:hostname hostname :task-id task-id})
@@ -348,12 +338,6 @@
         (log/error e "Failed to write hostname: Datomic error")))
     (log-structured/error "Failed to write hostname: task-id is nil."
                           {:hostname hostname})))
-
-(defn- task-id->instance-id
-  "Retrieves the instance-id given a task-id"
-  [db task-id]
-  (-> (d/entity db [:instance/task-id task-id])
-      :db/id))
 
 (defn handle-framework-message
   "Processes a framework message from Mesos."

@@ -62,3 +62,9 @@
    (timers/time!
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
+
+(defn task-id->instance-id
+  "Retrieves the instance-id given a task-id"
+  [db task-id]
+  (-> (d/entity db [:instance/task-id task-id])
+      :db/id))
