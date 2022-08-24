@@ -1090,7 +1090,7 @@
 
    A function `launch-distributed-job-fn` is used to actually do the launching. This is 
    needed to implement the different launch logic for launching synthetic pods for 
-   autoscaling or for using the Kubernetes Scheduler directly."
+   autoscaling or for using the Kubernetes Scheduler directly for real job pods."
   [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn launch-distributed-job-fn]
   (try
     (when (seq jobs)
@@ -1641,9 +1641,11 @@
              compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
              launch-distributed-job-fn
              (fn [[compute-cluster jobs]]
-               (let [task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+               (let [max-launchable (cc/max-launchable compute-cluster pool-name)
+                     launchable-jobs (take max-launchable jobs) ; TODO: log un-launchable later in fn
+                     task-metadata-seq (jobs->kubernetes-task-metadata launchable-jobs pool-name mesos-run-as-user compute-cluster)
                      psuedo-matches [{:task-metadata-seq task-metadata-seq}]
-                     task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
+                     task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) launchable-jobs task-metadata-seq)]
                  (launch-tasks-for-cluster compute-cluster psuedo-matches task-txns pool-name conn nil false)))]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
          (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters-for-pool
@@ -1664,7 +1666,8 @@
           pending-jobs (get @pool-name->pending-jobs-atom pool-name)
           considerable-jobs (pending-jobs->considerable-jobs db pending-jobs user->quota user->usage max-considerable pool-name)
           considerable-job-uuids (set (map :job/uuid considerable-jobs))]
-      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count considerable-job-uuids)})
+      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count considerable-job-uuids)
+                                               :number-pending-jobs (count pending-jobs)})
       (if (seq considerable-jobs)
         (do
           (swap! pool-name->pending-jobs-atom

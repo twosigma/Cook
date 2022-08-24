@@ -314,6 +314,8 @@
 
   (autoscaling? [_ _] false)
 
+  (max-launchable [_ _])
+
   (autoscale! [_ _ _ _])
 
   (use-cook-executor? [_] true)

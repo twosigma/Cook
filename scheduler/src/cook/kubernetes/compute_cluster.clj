@@ -378,6 +378,15 @@
      (prom/set prom/total-synthetic-pods {:pool pool-name :compute-cluster name} num-synthetic-pods)
      (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding))))
 
+(defn get-scheduling-pods
+  "Get the pods that are still being scheduled by Kubernetes. It consider pods
+   not yet bound to a node when filtering for this state. It does not consider 
+   pods with 'Pending' status, since this phase includes time spent pulling images
+   onto the host."
+  [compute-cluster pool-name]
+  (->> (get-pods-in-pool compute-cluster pool-name)
+       (add-starting-pods compute-cluster)
+       (remove api/pod->node-name)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id exit-code-syncer-state
                                      all-pods-atom current-nodes-atom pool->node-name->node
@@ -522,6 +531,39 @@
   (autoscaling? [_ pool-name]
     (and (-> synthetic-pods-config :pools (contains? pool-name))
          (= @state-atom :running)))
+  
+  (max-launchable
+   [this pool-name]
+   (let [scheduling-pods (get-scheduling-pods this pool-name)
+         num-scheduling-pods (count scheduling-pods)
+         total-pods (-> @all-pods-atom keys count)
+         total-nodes (-> @current-nodes-atom keys count)
+         ; NOTE: the synthetic pods config is co-opted here to determine the max outstanding
+         ; pods in the compute cluster. This configuration, set on the compute cluster
+         ; template, will be refactored in the future to more generally define autoscaling 
+         ; parameters once synthetic pods are decommissioned.
+         {:keys [max-pods-outstanding max-total-pods max-total-nodes]
+          :or {max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
+
+     (when (>= total-pods max-total-pods)
+       (log-structured/warn "Total pods are maxed out"
+                            {:compute-cluster name
+                             :number-max-total-pods max-total-pods
+                             :number-total-pods total-pods}))
+     (when (>= total-nodes max-total-nodes)
+       (log-structured/warn "Nodes are maxed out"
+                            {:compute-cluster name
+                             :number-max-total-nodes max-total-nodes
+                             :number-total-nodes total-nodes}))
+     (when (>= num-scheduling-pods max-pods-outstanding)
+       (log-structured/warn "Outstanding pods are maxed out"
+                            {:compute-cluster name
+                             :number-max-synthetic-pods max-pods-outstanding
+                             :number-outstanding-pods num-scheduling-pods}))
+
+     (min (- max-pods-outstanding num-scheduling-pods)
+          (- max-total-nodes total-nodes)
+          (- max-total-pods total-pods))))
 
   (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (tracing/with-span [s {:name "k8s.autoscale" :tags {:compute-cluster name :pool pool-name :component tracing-component-tag}}]
