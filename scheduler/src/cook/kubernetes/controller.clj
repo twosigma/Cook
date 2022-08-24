@@ -249,11 +249,23 @@
     (swap! map-atom dissoc key)
     (swap! map-atom assoc key value)))
 
+(defn- get-job-container-status
+  "Extract the container status for the main cook job container (defined in api/cook-container-name-for-job).
+  We use this because we need the actual state object to determine the failure reason for failed jobs."
+  [^V1PodStatus pod-status]
+  (->> pod-status
+       .getContainerStatuses
+       (filter (fn [^V1ContainerStatus container-status] (= api/cook-container-name-for-job
+                                                            (.getName container-status))))
+       first))
+
 (defn container-status->failure-reason
   "Maps kubernetes failure reasons to cook failure reasons"
-  [{:keys [name]} ^V1PodStatus pod-status ^V1Pod pod ^V1ContainerStatus container-status]
+  [{:keys [name]} ^V1Pod pod]
   ; TODO map additional kubernetes failure reasons
   (let [pod-name (api/V1Pod->name pod)
+        pod-status (.getStatus pod)
+        ^V1ContainerStatus container-status (get-job-container-status pod-status)
         container-terminated-reason (some-> container-status .getState .getTerminated .getReason)
         pod-status-reason (.getReason pod-status)
         pod-status-message (.getMessage pod-status)]
@@ -269,10 +281,10 @@
         :reason-slave-removed)
 
       (and pod-status-message (or
-                                ; this message is given when pod exceeds pod ephemeral-storage limit
-                                (str/includes? pod-status-message "ephemeral local storage usage exceeds")
-                                ; this message is given when pod exceeds ephemeral-storage request and available disk space on node is low
-                                (str/includes? pod-status-message "low on resource: ephemeral-storage")))
+                               ; this message is given when pod exceeds pod ephemeral-storage limit
+                               (str/includes? pod-status-message "ephemeral local storage usage exceeds")
+                               ; this message is given when pod exceeds ephemeral-storage request and available disk space on node is low
+                               (str/includes? pod-status-message "low on resource: ephemeral-storage")))
       :reason-container-limitation-disk
 
       ; If there is no container status and the pod status reason is Outofcpu,
@@ -306,16 +318,6 @@
                   {:pod-status pod-status :container-status container-status})
         :unknown))))
 
-(defn- get-job-container-status
-  "Extract the container status for the main cook job container (defined in api/cook-container-name-for-job).
-  We use this because we need the actual state object to determine the failure reason for failed jobs."
-  [^V1PodStatus pod-status]
-  (->> pod-status
-       .getContainerStatuses
-       (filter (fn [^V1ContainerStatus container-status] (= api/cook-container-name-for-job
-                                                            (.getName container-status))))
-       first))
-
 (defn make-failed-task-result
   "Make a pod status result corresponding to a failed pod"
   [instance-id reason]
@@ -342,8 +344,7 @@
                            :task-failed)
               reason (or reason
                          (when succeeded? :reason-normal-exit)
-                         (container-status->failure-reason compute-cluster pod-status
-                                                           pod job-container-status))
+                         (container-status->failure-reason compute-cluster pod))
               status {:task-id {:value pod-name}
                       :state task-state
                       :reason reason}
