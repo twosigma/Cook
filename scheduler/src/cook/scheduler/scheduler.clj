@@ -871,10 +871,11 @@
             (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
             (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
           (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})
-          (locking fenzo
-            (-> fenzo
-                (.getTaskAssigner)
-                (.call task-request hostname)))))
+          (when fenzo
+            (locking fenzo
+              (-> fenzo
+                  (.getTaskAssigner)
+                  (.call task-request hostname))))))
       (catch Throwable t
         (log-structured/error "Error launching tasks for compute cluster"
                               {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)}
@@ -954,9 +955,11 @@
      :task-id task-id}))
 
 (defn launch-tasks-for-cluster
-  [compute-cluster matches pool-name conn fenzo]
+  "Launch tasks in a compute cluster and commit to Datomic. Complete match objects 
+   for Fenzo pools or partial match objects (metadata only) for Kubernetes Scheduler 
+   pools are supported."
+  [compute-cluster matches task-txns pool-name conn fenzo should-metric-offer-match-time]
   (let [compute-cluster-name (cc/compute-cluster-name compute-cluster)
-        task-txns (matches->task-txns matches)
         count-txns (count task-txns)
         matches-for-logging (format-matches-for-structured-logging matches)
         kill-lock-object (cc/kill-lock-object compute-cluster)]
@@ -996,20 +999,22 @@
                                          e)
                     (throw e)))))
 
-            (handle-launch-task-metrics matches count-txns pool-name compute-cluster)
-
             ;; Launching the matched tasks MUST happen after the above transaction in
             ;; order to allow a transaction failure (due to failed preconditions)
-            ;; to block the launch
+            ;; to block the launch.
             (prom/with-duration
               prom/scheduler-launch-all-matched-tasks-submit-duration {:pool pool-name}
               (timers/time!
                 (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
                 (let [_ (log-structured/info "Launching matched tasks for compute cluster"
                                              {:pool pool-name :compute-cluster compute-cluster-name})]
-                  (doseq [match matches]
-                    (timers/stop (-> match :leases first :offer :offer-match-timer))
-                    (-> match :leases first :offer :offer-match-timer-prom-stop-fn))
+                  ;; Offers must be launched within a timeout, otherwise they expire worthless.
+                  ;; We track that metric in order to catch the problem. Note that this is only 
+                  ;; applicable to Fenzo tasks and can be deleted after its decomission.
+                  (when should-metric-offer-match-time
+                    (doseq [match matches]
+                      (timers/stop (-> match :leases first :offer :offer-match-timer))
+                      (-> match :leases first :offer :offer-match-timer-prom-stop-fn)))
                   (#(launch-matches! compute-cluster pool-name matches fenzo)))))
             (finally
               (.. kill-lock-object readLock unlock))))))))
@@ -1022,12 +1027,17 @@
           compute-cluster-to-matches-map (group-by match->compute-cluster matches)]
       (->> compute-cluster-to-matches-map
            (map
-             (fn [[compute-cluster matches-in-compute-cluster]]
-               ; vary behavior based on compute cluster type. Mesos clusters are single-threaded and
-               ; should not be launched with futures
-               (if (:mesos-config compute-cluster)
-                 (launch-tasks-for-cluster compute-cluster matches-in-compute-cluster pool-name conn fenzo)
-                 (future (launch-tasks-for-cluster compute-cluster matches-in-compute-cluster pool-name conn fenzo)))))
+            (fn [[compute-cluster matches-in-compute-cluster]]
+              (let [task-txns (matches->task-txns matches-in-compute-cluster)
+                    count-txns (count task-txns)]
+                ; vary behavior based on compute cluster type. Mesos clusters are single-threaded and
+                ; should not be launched with futures
+                (if (:mesos-config compute-cluster)
+                  (do (launch-tasks-for-cluster compute-cluster matches-in-compute-cluster task-txns pool-name conn fenzo true)
+                      (handle-launch-task-metrics matches count-txns pool-name compute-cluster))
+                  (future
+                    (launch-tasks-for-cluster compute-cluster matches-in-compute-cluster task-txns pool-name conn fenzo true)
+                    (handle-launch-task-metrics matches count-txns pool-name compute-cluster))))))
            doall
            (run! #(when (future? %) (deref %)))))))
 
@@ -1643,37 +1653,10 @@
              compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
              launch-distributed-job-fn
              (fn [[compute-cluster jobs]]
-               (let [kill-lock-object (cc/kill-lock-object compute-cluster)
-                     task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+               (let [task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+                     psuedo-matches [{:task-metadata-seq task-metadata-seq}]
                      task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
-                 (try
-                   (log-structured/debug "Acquiring lock to commit tasks and and launch to Kubernetes."
-                                         {:pool pool-name :compute-cluster compute-cluster})
-                   (.. kill-lock-object readLock lock)
-                   (timers/time!
-                    (timers/timer (metric-title "distribute-jobs-to-kubernetes-transact-task-duration" pool-name))
-                    (datomic/transact
-                     conn
-                     (reduce into [] task-txns)
-                     (fn [e]
-                       (log-structured/warn "Transaction timed out, so these tasks might be present"
-                                            "in Datomic without actually having been launched in compute cluster"
-                                            {:compute-cluster compute-cluster :pool pool-name} e)
-                       (throw e))))
-                   (timers/time!
-                    (timers/timer (metric-title "distribute-jobs-to-kubernetes-launch-duration" pool-name))
-                    (cc/launch-tasks
-                     compute-cluster pool-name [{:task-metadata-seq task-metadata-seq}]
-                     (fn process-task-post-launch!
-                       [{:keys [_ task-request]}]
-                       (let [user (get-in task-request [:job :job/user])
-                             compute-cluster-launch-rate-limiter (cc/launch-rate-limiter compute-cluster)
-                             token-key (quota/pool+user->token-key pool-name user)]
-                         (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
-                         (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
-                       (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)}))))
-                   (finally
-                     (.. kill-lock-object readLock unlock)))))]
+                 (launch-tasks-for-cluster compute-cluster psuedo-matches task-txns pool-name conn nil false)))]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
          (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters-for-pool
                                      job->acceptable-compute-clusters-fn launch-distributed-job-fn)
