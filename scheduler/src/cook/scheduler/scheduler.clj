@@ -207,12 +207,6 @@
     (update-metrics! "cpu-times" (* instance-runtime-seconds cpus))
     (update-metrics! "mem-times" (* instance-runtime-seconds mem-gb))))
 
-(defn- task-id->instance-id
-  "Retrieves the instance-id given a task-id"
-  [db task-id]
-  (-> (d/entity db [:instance/task-id task-id])
-      :db/id))
-
 (defn write-status-to-datomic
   "Takes a status update from mesos."
   [conn pool-name->fenzo-state status]
@@ -318,7 +312,7 @@
   (if task-id
     (try
       (let [db (db conn)
-            instance (task-id->instance-id db task-id)]
+            instance (queries/task-id->instance-id db task-id)]
         (if (nil? instance)
           (log-structured/error "Failed to write sandbox-url: no instance for task-id."
                                 {:sandbox-url sandbox-url :task-id task-id})
@@ -335,7 +329,7 @@
   (if task-id
     (try
       (let [db (db conn)
-            instance (task-id->instance-id db task-id)]
+            instance (queries/task-id->instance-id db task-id)]
         (if (nil? instance)
           (log-structured/error "Failed to write hostname: no instance for task-id."
                                 {:hostname hostname :task-id task-id})
