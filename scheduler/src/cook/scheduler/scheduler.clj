@@ -871,6 +871,9 @@
             (ratelimit/spend! quota/per-user-per-pool-launch-rate-limiter token-key 1)
             (ratelimit/spend! compute-cluster-launch-rate-limiter ratelimit/compute-cluster-launch-rate-limiter-key 1))
           (prom/inc prom/scheduler-jobs-launched {:pool pool-name :compute-cluster (cc/compute-cluster-name compute-cluster)})
+          ;; When Fenzo is specified, we need to tell it that the task was
+          ;; scheduled. Fenzo can be nil when launching tasks for a Kubernetes
+          ;; Scheduler pool.
           (when fenzo
             (locking fenzo
               (-> fenzo
@@ -1008,9 +1011,10 @@
                 (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
                 (let [_ (log-structured/info "Launching matched tasks for compute cluster"
                                              {:pool pool-name :compute-cluster compute-cluster-name})]
-                  ;; Offers must be launched within a timeout, otherwise they expire worthless.
+                  ;; Mesos offers must be launched within a timeout, otherwise they expire worthless.
                   ;; We track that metric in order to catch the problem. Note that this is only 
-                  ;; applicable to Fenzo tasks and can be deleted after its decomission.
+                  ;; applicable to Mesos tasks on Fenzo. When Mesos goes away, this metric ceases 
+                  ;; to be important and this can be deleted.
                   (when should-metric-offer-match-time
                     (doseq [match matches]
                       (timers/stop (-> match :leases first :offer :offer-match-timer))
