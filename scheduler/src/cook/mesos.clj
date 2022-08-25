@@ -24,6 +24,7 @@
             [cook.datomic :refer [transact-with-retries]]
             [cook.mesos.heartbeat]
             [cook.monitor]
+            [cook.prometheus-metrics :as prom]
             [cook.queue-limit :as queue-limit]
             [cook.rebalancer]
             [cook.scheduler.optimizer]
@@ -266,6 +267,7 @@
                                                                                           optimizer-trigger-chan))
                                       ; This counter exists so that the cook leader has a '1' and the others have a '0'.
                                       ; So we can see who the leader is in the graphs by graphing the value.
+                                      (prom/set prom/is-leader 1)
                                       (counters/inc! mesos-leader)
                                       (async/tap mesos-datomic-mult datomic-report-chan)
                                       (cook.scheduler.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn)
@@ -287,6 +289,7 @@
                                       (log/error e "Lost leadership due to exception")
                                       (reset! normal-exit false))
                                     (finally
+                                      (prom/set prom/is-leader 0)
                                       (counters/dec! mesos-leader)
                                       (when @normal-exit
                                         (log/warn "Lost leadership naturally"))
@@ -299,6 +302,7 @@
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
                                 (when @leadership-atom
+                                  (prom/set prom/is-leader 0)
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)
