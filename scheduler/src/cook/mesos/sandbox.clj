@@ -138,6 +138,7 @@
   "Updates the sandbox-pending-sync-host-count to the number of pending sync hosts and returns the input."
   [{:keys [pending-sync-hosts] :as pending-sync-state}]
   (counters/clear! sandbox-pending-sync-host-count)
+  (prom/set prom/mesos-pending-sync-host-count 0)
   (when (seq pending-sync-hosts)
     (prom/set prom/mesos-pending-sync-host-count (count pending-sync-hosts))
     (counters/inc! sandbox-pending-sync-host-count (count pending-sync-hosts)))
