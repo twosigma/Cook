@@ -17,12 +17,12 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.prometheus-metrics :as prom]
             [cook.queries :as queries]
             [datomic.api :as d]
             [metatransaction.core :refer [db]]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]
-            [cook.prometheus-metrics :as prom]))
+            [plumbing.core :as pc]))
 
 (def default-user "default")
 

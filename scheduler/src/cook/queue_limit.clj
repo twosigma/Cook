@@ -4,13 +4,13 @@
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.prometheus-metrics :as prom]
             [cook.queries :as queries]
             [cook.regexp-tools :as regexp-tools]
             [cook.util :as util]
             [datomic.api :as d]
             [plumbing.core :as pc]
-            [metrics.timers :as timers]
-            [cook.prometheus-metrics :as prom]))
+            [metrics.timers :as timers]))
 
 (defn- per-pool-config
   "Returns the :per-pool section of the queue-limits config"

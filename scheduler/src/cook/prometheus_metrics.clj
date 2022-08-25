@@ -154,6 +154,14 @@
 (def task-counts-to-preempt :cook/rebalancer-task-counts-to-preempt)
 (def job-counts-to-run :cook/rebalancer-job-counts-to-run)
 
+;; Progress metrics
+(def progress-aggregator-drop-count :cook/progress-aggregator-drop-count)
+(def progress-aggregator-pending-states-count :cook/progress-aggregator-pending-states-count)
+(def progress-updater-pending-states :cook/progress-updater-pending-states)
+(def progress-aggregator-message-count :cook/progress-aggregator-message-count)
+(def progress-updater-publish-duration :cook/progress-updater-publish-duration-seconds)
+(def progress-updater-transact-duration :cook/progress-updater-transact-duration-seconds)
+
 ;; Other metrics
 (def is-leader :cook/scheduler-is-leader)
 (def update-queue-lengths-duration :cook/scheduler-update-queue-lengths-duration)
@@ -542,6 +550,22 @@
       (prometheus/summary job-counts-to-run
                           {:description "Distribution of number of jobs to run in the rebalancer"
                            :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      ;; Progress metrics ----------------------------------------------------------------------------------------------
+      (prometheus/counter progress-aggregator-drop-count
+                          {:description "Total count of dropped progress messages"})
+      (prometheus/counter progress-aggregator-message-count
+                          {:description "Total count of received progress messages"})
+      (prometheus/gauge progress-aggregator-pending-states-count
+                          {:description "Total count of pending states"})
+      (prometheus/summary progress-updater-pending-states
+                          {:description "Distribution of pending states count in the progress updater"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary progress-updater-publish-duration
+                          {:description "Latency distribution of the publish function in the progress updater"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary progress-updater-transact-duration
+                          {:description "Latency distribution of the transact function in the progress updater"
                            :quantiles default-summary-quantiles})
       ;; Other metrics -------------------------------------------------------------------------------------------------
       (prometheus/gauge is-leader
