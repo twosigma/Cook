@@ -136,7 +136,8 @@
       (is (= actual
              [{:pool-regex "test-pool"
                :scheduler-config {:scheduler "kubernetes"
-                                  :max-jobs-considered 1000}}])))))
+                                  :max-jobs-considered 500
+                                  :minimum-scheduling-capacity-threshold 50}}])))))
 
 (deftest test-valid-schedulers-config
   (testing "empty valid-schedulers-config"
