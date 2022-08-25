@@ -1650,6 +1650,7 @@
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
          (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters-for-pool
                                      job->acceptable-compute-clusters-fn launch-distributed-job-fn)
+         ; TODO: change count to actual launched
          (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :number-launched-jobs (count considerable-jobs)}))))))
 
 (defn handle-kubernetes-scheduler-pool

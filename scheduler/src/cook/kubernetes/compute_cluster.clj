@@ -379,10 +379,11 @@
      (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding))))
 
 (defn get-scheduling-pods
-  "Get the pods that are still being scheduled by Kubernetes. It consider pods
-   not yet bound to a node when filtering for this state. It does not consider 
-   pods with 'Pending' status, since this phase includes time spent pulling images
-   onto the host."
+  "Get the pods that are still being scheduled by Kubernetes. We consider pods
+   not yet bound to a node when filtering for this state. Pods with 'Pending' 
+   status are not considered, since this phase includes time spent pulling images
+   onto the host. Depending on that status would not acurately reflect the pressure
+   inside the Kubernetes Scheduler."
   [compute-cluster pool-name]
   (->> (get-pods-in-pool compute-cluster pool-name)
        (add-starting-pods compute-cluster)
@@ -549,17 +550,20 @@
        (log-structured/warn "Total pods are maxed out"
                             {:compute-cluster name
                              :number-max-total-pods max-total-pods
-                             :number-total-pods total-pods}))
+                             :number-total-pods total-pods
+                             :pool-name pool-name}))
      (when (>= total-nodes max-total-nodes)
        (log-structured/warn "Nodes are maxed out"
                             {:compute-cluster name
                              :number-max-total-nodes max-total-nodes
-                             :number-total-nodes total-nodes}))
+                             :number-total-nodes total-nodes
+                             :pool-name pool-name}))
      (when (>= num-scheduling-pods max-pods-outstanding)
        (log-structured/warn "Outstanding pods are maxed out"
                             {:compute-cluster name
                              :number-max-synthetic-pods max-pods-outstanding
-                             :number-outstanding-pods num-scheduling-pods}))
+                             :number-outstanding-pods num-scheduling-pods
+                             :pool-name pool-name}))
 
      (min (- max-pods-outstanding num-scheduling-pods)
           (- max-total-nodes total-nodes)
