@@ -549,8 +549,9 @@
             node->node-name
             callbacks ; Update the set of all nodes.
             (fn []
-              (prom/set prom/total-nodes {:compute-cluster compute-cluster-name} (-> @current-nodes-atom keys count))
-              (set-metric-counter "total-nodes"  (-> @current-nodes-atom keys count) compute-cluster-name)
+              (let [current-nodes (count @current-nodes-atom)]
+                (prom/set prom/total-nodes {:compute-cluster compute-cluster-name} current-nodes)
+                (set-metric-counter "total-nodes"  current-nodes compute-cluster-name))
               (when max-total-nodes
                   (prom/set prom/max-nodes {:compute-cluster compute-cluster-name} max-total-nodes)
                   (set-metric-counter "max-total-nodes" max-total-nodes compute-cluster-name)))
