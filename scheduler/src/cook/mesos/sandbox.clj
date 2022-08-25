@@ -21,13 +21,13 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.prometheus-metrics :as prom]
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
-            [metrics.timers :as timers]
-            [cook.prometheus-metrics :as prom]))
+            [metrics.timers :as timers]))
 
 (defn clear-agent-state
   "Clears the published entries from the aggregated state of the agent.

@@ -22,6 +22,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.prometheus-metrics :as prom]
             [cook.quota :as quota]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
@@ -32,8 +33,7 @@
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-keys]]
-            [swiss.arrows :refer :all]
-            [cook.prometheus-metrics :as prom]))
+            [swiss.arrows :refer :all]))
 
 ;;; Design
 ;;; Rebalancer is designed to run independently of the scheduler. Its primary functionality is to detect that
