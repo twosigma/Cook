@@ -145,8 +145,20 @@
 ;; Plugin metrics
 (def pool-mover-jobs-updated :cook/scheduler-plugins-pool-mover-jobs-updated-count)
 
-;; Misc metrics
+;; Rebalancer metrics
+(def compute-preemption-decision-duration :cook/rebalancer-compute-premeption-decision-duration-seconds)
+(def rebalance-duration :cook/rebalancer-rebalance-duration-seconds)
+(def pending-job-drus :cook/rebalancer-pending-job-drus)
+(def nearest-task-drus :cook/rebalancer-nearest-task-drus)
+(def positive-dru-diffs :cook/rebalancer-positive-dru-diffs)
+(def preemption-counts-for-host :cook/rebalancer-preemption-counts-for-host)
+(def task-counts-to-preempt :cook/rebalancer-task-counts-to-preempt)
+(def job-counts-to-run :cook/rebalancer-job-counts-to-run)
+
+;; Other metrics
 (def is-leader :cook/scheduler-is-leader)
+(def update-queue-lengths-duration :cook/scheduler-update-queue-lengths-duration)
+
 
 (defn create-registry
   []
@@ -503,9 +515,45 @@
       ;; Plugins metrics -----------------------------------------------------------------------------------------------
       (prometheus/counter pool-mover-jobs-updated
                           {:description "Total count of jobs moved to a different pool"})
+      ;; Rebalancer metrics --------------------------------------------------------------------------------------------
+      (prometheus/summary compute-preemption-decision-duration
+                          {:description "Latency distribution of computing preemption decision"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary rebalance-duration
+                          {:description "Latency distribution of rebalancing"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary pending-job-drus
+                          {:description "Distribution of pending jobs drus in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary nearest-task-drus
+                          {:description "Distribution of nearest task drus in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary positive-dru-diffs
+                          {:description "Distribution of positive dru diffs in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary preemption-counts-for-host
+                          {:description "Distribution of preemption counts per host in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary task-counts-to-preempt
+                          {:description "Distribution of number of tasks to preempt in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary job-counts-to-run
+                          {:description "Distribution of number of jobs to run in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
       ;; Other metrics -------------------------------------------------------------------------------------------------
       (prometheus/gauge is-leader
-                        {:description "1 if this host is the current leader, 0 otherwise"}))))
+                        {:description "1 if this host is the current leader, 0 otherwise"})
+      (prometheus/summary update-queue-lengths-duration
+                          {:description "Latency distribution of updating queue lengths from the database"
+                           :quantiles default-summary-quantiles}))))
 
 
 ;; A global registry for all metrics reported by Cook.
