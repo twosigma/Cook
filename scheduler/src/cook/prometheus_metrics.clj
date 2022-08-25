@@ -27,6 +27,8 @@
 ;; We define all the metric names here to get IDE support and avoid the chance of runtime
 ;; errors due to misspelled metric names.
 ;; We are standardizing the metric format to be :cook/<component>-<metric-name>-<unit>
+
+;; Scheduler metrics
 (def scheduler-rank-cycle-duration :cook/scheduler-rank-cycle-duration-seconds)
 (def scheduler-match-cycle-duration :cook/scheduler-match-cycle-duration-seconds)
 (def scheduler-generate-user-usage-map-duration :cook/scheduler-generate-user-usage-map-duration-seconds)
@@ -50,6 +52,12 @@
 (def scheduler-match-cycle-head-was-matched :cook/scheduler-match-cycle-head-was-matched)
 (def scheduler-match-cycle-queue-was-full :cook/scheduler-match-cycle-queue-was-full)
 (def scheduler-match-cycle-all-matched :cook/scheduler-match-cycle-all-matched)
+(def init-user-to-dry-divisors-duration :cook/scheduler-init-user-to-dru-divisors-duration-seconds)
+(def generate-sorted-task-scored-task-pairs-duration :cook/scheduler-generate-sorted-task-scored-task-duration-seconds)
+(def get-shares-duration :cook/scheduler-get-shares-duration-seconds)
+(def create-user-to-share-fn-duration :cook/scheduler-create-user-to-share-fn-duration-seconds)
+
+;; Monitor / user resource metrics
 (def user-state-count :cook/scheduler-users-state-count)
 ;; For user resource metrics, we access them by resource type at runtime, so it is
 ;; easier to define them all in a map instead of separate vars.
@@ -133,6 +141,11 @@
 (def get-user-running-jobs-duration :cook/tools-get-user-running-jobs-duration-seconds)
 (def get-all-running-jobs-duration :cook/tools-get-all-running-jobs-duration-seconds)
 
+;; Plugin metrics
+(def pool-mover-jobs-updated :cook/scheduler-plugins-pool-mover-jobs-updated-count)
+
+;; Misc metrics
+(def is-leader :cook/scheduler-is-leader)
 
 (defn create-registry
   []
@@ -209,6 +222,21 @@
       (prometheus/counter scheduler-jobs-launched
                           {:description "Total count of jobs launched per pool and compute cluster"
                            :labels [:pool :compute-cluster]})
+      (prometheus/summary init-user-to-dry-divisors-duration
+                          {:description "Latency distribution of initializing the user to dru divisors map"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary generate-sorted-task-scored-task-pairs-duration
+                          {:description "Latency distribution of generating the sorted list of task and scored task pairs"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-shares-duration
+                          {:description "Latency distribution of getting all users' share"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary create-user-to-share-fn-duration
+                          {:description "Latency distribution of creating the user-to-share function"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
       ;; Match cycle metrics -------------------------------------------------------------------------------------------
       (prometheus/gauge scheduler-match-cycle-jobs-count
                         {:description "Aggregate match cycle job counts stats"
@@ -216,7 +244,7 @@
       (prometheus/gauge scheduler-match-cycle-matched-percent
                         {:description "Percent of jobs matched in last match cycle"
                          :labels [:pool]})
-      ; The follow 1/0 metrics are useful for value map visualizations in Grafana
+      ; The following 1/0 metrics are useful for value map visualizations in Grafana
       (prometheus/gauge scheduler-match-cycle-head-was-matched
                         {:description "1 if head was matched, 0 otherwise"
                          :labels [:pool]})
@@ -466,7 +494,14 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary get-all-running-jobs-duration
                           {:description "Latency distribution of getting all running jobs"
-                           :quantiles default-summary-quantiles}))))
+                           :quantiles default-summary-quantiles})
+      ;; Plugins metrics -----------------------------------------------------------------------------------------------
+      (prometheus/counter pool-mover-jobs-updated
+                          {:description "Total count of jobs moved to a different pool"})
+      ;; Other metrics -------------------------------------------------------------------------------------------------
+      (prometheus/gauge is-leader
+                        {:description "1 if this host is the current leader, 0 otherwise"}))))
+
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.

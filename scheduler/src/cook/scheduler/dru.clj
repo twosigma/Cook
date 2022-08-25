@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.scheduler.dru
-  (:require [cook.scheduler.share :as share]
+  (:require [cook.prometheus-metrics :as prom]
+            [cook.scheduler.share :as share]
             [cook.tools :as util]
             [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
@@ -29,13 +30,15 @@
 (defn init-user->dru-divisors
   "Initializes dru divisors map. This map will contain all users that have a running task or pending job"
   [db running-task-ents pending-job-ents pool-name]
-  (timers/time!
-    (timers/timer (metric-title "init-user->dru-divisors-duration" pool-name))
-    (let [all-running-users (map util/task-ent->user running-task-ents)
-          all-pending-users (map :job/user pending-job-ents)
-          all-users-set (-> #{} (into all-running-users) (into all-pending-users))
-          user->dru-divisors (share/get-shares db all-users-set pool-name)]
-      user->dru-divisors)))
+  (prom/with-duration
+    prom/init-user-to-dry-divisors-duration {:pool pool-name}
+    (timers/time!
+      (timers/timer (metric-title "init-user->dru-divisors-duration" pool-name))
+      (let [all-running-users (map util/task-ent->user running-task-ents)
+            all-pending-users (map :job/user pending-job-ents)
+            all-users-set (-> #{} (into all-running-users) (into all-pending-users))
+            user->dru-divisors (share/get-shares db all-users-set pool-name)]
+        user->dru-divisors))))
 
 (defn accumulate-resources
   "Takes a seq of task resources, returns a seq of accumulated resource usage the nth element is the sum of 0..n"
@@ -112,13 +115,15 @@
   "Returns a lazy sequence of [task,scored-task] pairs sorted by dru in ascending order.
    If jobs have the same dru, any ordering is allowed"
   [user->dru-divisors pool-name user->sorted-running-task-ents]
-  (timers/time!
-    (timers/timer (metric-title "sorted-task-scored-task-pairs-duration" pool-name))
-    (->> user->sorted-running-task-ents
-         (sort-by first) ; Ensure this function is deterministic
-         (map (fn [[user task-ents]]
-                (compute-task-scored-task-pairs (user->dru-divisors user) task-ents)))
-         (sorted-merge (comp :dru second)))))
+  (prom/with-duration
+    prom/generate-sorted-task-scored-task-pairs-duration {:pool pool-name}
+    (timers/time!
+      (timers/timer (metric-title "sorted-task-scored-task-pairs-duration" pool-name))
+      (->> user->sorted-running-task-ents
+           (sort-by first) ; Ensure this function is deterministic
+           (map (fn [[user task-ents]]
+                  (compute-task-scored-task-pairs (user->dru-divisors user) task-ents)))
+           (sorted-merge (comp :dru second))))))
 
 (defn next-task->scored-task
   "Computes the priority-map from task to scored-task sorted by -dru for the next cycle.
