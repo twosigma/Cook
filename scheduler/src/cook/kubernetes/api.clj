@@ -432,8 +432,9 @@
             get-pod-namespaced-key
             callbacks
             (fn []
-              (prom/set prom/total-pods {:compute-cluster compute-cluster-name} (-> @all-pods-atom keys count))
-              (set-metric-counter "total-pods" (-> @all-pods-atom keys count) compute-cluster-name)
+              (let [total-pods (count @all-pods-atom)]
+                (prom/set prom/total-pods {:compute-cluster compute-cluster-name} total-pods)
+                (set-metric-counter "total-pods" total-pods compute-cluster-name))
               (when max-total-pods
                   (prom/set prom/max-pods {:compute-cluster compute-cluster-name} max-total-pods)
                   (set-metric-counter "max-total-pods" max-total-pods compute-cluster-name)))
