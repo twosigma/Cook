@@ -164,8 +164,9 @@
 
 ;; Other metrics
 (def is-leader :cook/scheduler-is-leader)
-(def update-queue-lengths-duration :cook/scheduler-update-queue-lengths-duration)
-
+(def update-queue-lengths-duration :cook/scheduler-update-queue-lengths-duration-seconds)
+(def acquire-kill-lock-for-kill-duration :cook/scheduler-acquire-kill-lock-for-kill-duration-seconds)
+(def get-pending-jobs-duration :cook/scheduler-get-pending-jobs-duration-seconds)
 
 (defn create-registry
   []
@@ -572,6 +573,12 @@
                         {:description "1 if this host is the current leader, 0 otherwise"})
       (prometheus/summary update-queue-lengths-duration
                           {:description "Latency distribution of updating queue lengths from the database"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary acquire-kill-lock-for-kill-duration
+                          {:description "Latency distribution of acquiring the kill lock for kill"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-pending-jobs-duration
+                          {:description "Latency distribution of getting all pending jobs"
                            :quantiles default-summary-quantiles}))))
 
 
