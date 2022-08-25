@@ -2224,6 +2224,7 @@
   (if (async/offer! offers-chan offers)
     (do
       (counters/inc! offer-chan-depth)
+      (prom/inc prom/mesos-offer-chan-depth {:pool pool-name})
       (async/offer! match-trigger-chan :trigger)) ; :trigger is arbitrary, the value is ignored
     (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
         (meters/mark! offer-chan-full-error)

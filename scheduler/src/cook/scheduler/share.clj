@@ -17,6 +17,7 @@
   (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.pool :as pool]
+            [cook.prometheus-metrics :as prom]
             [cook.queries :as queries]
             [datomic.api :as d]
             [metatransaction.core :refer [db]]
@@ -129,11 +130,13 @@
   ([db users pool-name]
    (get-shares db users pool-name (queries/get-all-resource-types db)))
   ([db users pool-name resource-types]
-   (timers/time!
-     get-shares-duration
-     (let [type->default (get-share db default-user pool-name resource-types {})]
-       (-> (fn [user] (get-share db user pool-name resource-types type->default))
-           (pc/map-from-keys users))))))
+   (prom/with-duration
+     prom/get-shares-duration {}
+     (timers/time!
+       get-shares-duration
+       (let [type->default (get-share db default-user pool-name resource-types {})]
+         (-> (fn [user] (get-share db user pool-name resource-types type->default))
+           (pc/map-from-keys users)))))))
 
 (defn retract-share!
   [conn user pool reason]
@@ -189,17 +192,19 @@
    and returns the `default-user` value if a user is not returned.
    This is useful if the application will go over ALL users during processing"
   [db pool-name]
-  (timers/time!
-    create-user->share-fn-duration
-    (let [all-share-users (d/q '[:find [?user ...]
-                                 :where
-                                 [?q :share/user ?user]]
-                               db)
-          default-user-share (get-share db default-user pool-name)
-          user->share-cache (-> (get-shares db all-share-users pool-name)
+  (prom/with-duration
+    prom/create-user-to-share-fn-duration {}
+    (timers/time!
+      create-user->share-fn-duration
+      (let [all-share-users (d/q '[:find [?user ...]
+                                   :where
+                                   [?q :share/user ?user]]
+                                 db)
+            default-user-share (get-share db default-user pool-name)
+            user->share-cache (-> (get-shares db all-share-users pool-name)
                                 ;; In case default-user doesn't have an explicit share
                                 (assoc default-user default-user-share))]
-      (fn user->share
-        [user]
-        (or (get user->share-cache user)
-            default-user-share)))))
+        (fn user->share
+          [user]
+          (or (get user->share-cache user)
+              default-user-share))))))

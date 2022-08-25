@@ -18,6 +18,7 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.prometheus-metrics :as prom]
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.timers :as timers]
@@ -114,9 +115,11 @@
   [{:keys [name kill-lock-object] :as compute-cluster} task-id]
   ; Yes, this is an empty lock body. It is to create an ordering relationship so that if we're in the process of writing to datomic and launching,
   ; we defer killing anything until we've told mesos/k8s about the pod. See further explanation at kill-lock-object.
-  (let [kill-lock-timer-context (timers/start kill-lock-timer-for-kill)]
+  (let [prom-timer-stop-fn (prom/start-timer prom/acquire-kill-lock-for-kill-duration)
+        kill-lock-timer-context (timers/start kill-lock-timer-for-kill)]
     (.. kill-lock-object writeLock lock)
     (.. kill-lock-object writeLock unlock)
+    (prom-timer-stop-fn)
     (.stop kill-lock-timer-context))
   (try
     (kill-task compute-cluster task-id)

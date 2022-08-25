@@ -4,6 +4,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.prometheus-metrics :as prom]
             [cook.queries :as queries]
             [cook.regexp-tools :as regexp-tools]
             [cook.util :as util]
@@ -156,19 +157,21 @@
   (defn update-queue-lengths!
     "Queries queue lengths from the database and updates the atoms"
     []
-    (timers/time!
-      update-queue-lengths!-duration
-      (log/info "Starting queue length update")
-      (let [{:keys [pool->queue-length
-                    pool->user->queue-length]
-             :as queue-lengths}
-            (query-queue-lengths)]
-        (log/info "Queried queue length" queue-lengths)
-        (reset! pool->queue-length-atom
-                pool->queue-length)
-        (reset! pool->user->queue-length-atom
-                pool->user->queue-length)
-        (log/info "Done with queue length update")))))
+    (prom/with-duration
+      prom/update-queue-lengths-duration
+      (timers/time!
+        update-queue-lengths!-duration
+        (log/info "Starting queue length update")
+        (let [{:keys [pool->queue-length
+                      pool->user->queue-length]
+               :as queue-lengths}
+              (query-queue-lengths)]
+          (log/info "Queried queue length" queue-lengths)
+          (reset! pool->queue-length-atom
+                  pool->queue-length)
+          (reset! pool->user->queue-length-atom
+                  pool->user->queue-length)
+          (log/info "Done with queue length update"))))))
 
 (defn start-updating-queue-lengths
   "Starts the chime to update queue lengths at the configured interval"

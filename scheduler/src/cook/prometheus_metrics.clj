@@ -27,6 +27,8 @@
 ;; We define all the metric names here to get IDE support and avoid the chance of runtime
 ;; errors due to misspelled metric names.
 ;; We are standardizing the metric format to be :cook/<component>-<metric-name>-<unit>
+
+;; Scheduler metrics
 (def scheduler-rank-cycle-duration :cook/scheduler-rank-cycle-duration-seconds)
 (def scheduler-match-cycle-duration :cook/scheduler-match-cycle-duration-seconds)
 (def scheduler-generate-user-usage-map-duration :cook/scheduler-generate-user-usage-map-duration-seconds)
@@ -51,6 +53,12 @@
 (def scheduler-match-cycle-head-was-matched :cook/scheduler-match-cycle-head-was-matched)
 (def scheduler-match-cycle-queue-was-full :cook/scheduler-match-cycle-queue-was-full)
 (def scheduler-match-cycle-all-matched :cook/scheduler-match-cycle-all-matched)
+(def init-user-to-dry-divisors-duration :cook/scheduler-init-user-to-dru-divisors-duration-seconds)
+(def generate-sorted-task-scored-task-pairs-duration :cook/scheduler-generate-sorted-task-scored-task-duration-seconds)
+(def get-shares-duration :cook/scheduler-get-shares-duration-seconds)
+(def create-user-to-share-fn-duration :cook/scheduler-create-user-to-share-fn-duration-seconds)
+
+;; Monitor / user resource metrics
 (def user-state-count :cook/scheduler-users-state-count)
 ;; For user resource metrics, we access them by resource type at runtime, so it is
 ;; easier to define them all in a map instead of separate vars.
@@ -98,6 +106,24 @@
 (def pod-running-duration :cook/scheduler-kubernetes-pod-duration-until-running-seconds)
 (def offer-match-timer :cook/scheduler-kubernetes-offer-match-duration-seconds)
 
+;; Mesos metrics
+(def mesos-heartbeats :cook/scheduler-mesos-heartbeats-count)
+(def mesos-heartbeat-timeouts :cook/scheduler-mesos-heartbeat-timeouts-count)
+(def mesos-datomic-sync-duration :cook/scheduler-mesos-heartbeat-datomic-sync-duration-seconds)
+(def mesos-offer-chan-depth :cook/scheduler-mesos-offer-chan-depth)
+(def mesos-error :cook/scheduler-mesos-error-count)
+(def mesos-handle-framework-message :cook/scheduler-mesos-handle-framework-message)
+(def mesos-handle-status-update :cook/scheduler-mesos-handle-status-update)
+(def mesos-tasks-killed-in-status-update :cook/scheduler-mesos-tasks-killed-in-status-update-count)
+(def mesos-aggregator-pending-count :cook/scheduler-mesos-aggregator-pending-count)
+(def mesos-pending-sync-host-count :cook/scheduler-mesos-pending-sync-host-count)
+(def mesos-updater-unprocessed-count :cook/scheduler-mesos-field-updater-unprocessed-count)
+(def mesos-aggregator-message :cook/scheduler-mesos-field-aggregator-message-count)
+(def mesos-updater-publish-duration :cook/scheduler-mesos-field-updater-publish-duration-seconds)
+(def mesos-updater-transact-duration :cook/scheduler-mesos-field-updater-transact-duration-seconds)
+(def mesos-updater-pending-entries :cook/scheduler-mesos-field-updater-pending-entries-distribution)
+(def mesos-updater-unprocessed-entries :cook/scheduler-mesos-unprocessed-entries-distribution)
+
 ;; API metrics
 (def jobs-created :cook/api-jobs-created)
 (def list-request-param-time-range :cook/api-list-request-param-time-range-millis)
@@ -116,6 +142,32 @@
 (def get-user-running-jobs-duration :cook/tools-get-user-running-jobs-duration-seconds)
 (def get-all-running-jobs-duration :cook/tools-get-all-running-jobs-duration-seconds)
 
+;; Plugin metrics
+(def pool-mover-jobs-updated :cook/scheduler-plugins-pool-mover-jobs-updated-count)
+
+;; Rebalancer metrics
+(def compute-preemption-decision-duration :cook/rebalancer-compute-premeption-decision-duration-seconds)
+(def rebalance-duration :cook/rebalancer-rebalance-duration-seconds)
+(def pending-job-drus :cook/rebalancer-pending-job-drus)
+(def nearest-task-drus :cook/rebalancer-nearest-task-drus)
+(def positive-dru-diffs :cook/rebalancer-positive-dru-diffs)
+(def preemption-counts-for-host :cook/rebalancer-preemption-counts-for-host)
+(def task-counts-to-preempt :cook/rebalancer-task-counts-to-preempt)
+(def job-counts-to-run :cook/rebalancer-job-counts-to-run)
+
+;; Progress metrics
+(def progress-aggregator-drop-count :cook/progress-aggregator-drop-count)
+(def progress-aggregator-pending-states-count :cook/progress-aggregator-pending-states-count)
+(def progress-updater-pending-states :cook/progress-updater-pending-states)
+(def progress-aggregator-message-count :cook/progress-aggregator-message-count)
+(def progress-updater-publish-duration :cook/progress-updater-publish-duration-seconds)
+(def progress-updater-transact-duration :cook/progress-updater-transact-duration-seconds)
+
+;; Other metrics
+(def is-leader :cook/scheduler-is-leader)
+(def update-queue-lengths-duration :cook/scheduler-update-queue-lengths-duration-seconds)
+(def acquire-kill-lock-for-kill-duration :cook/scheduler-acquire-kill-lock-for-kill-duration-seconds)
+(def get-pending-jobs-duration :cook/scheduler-get-pending-jobs-duration-seconds)
 
 (defn create-registry
   []
@@ -196,6 +248,21 @@
       (prometheus/counter scheduler-jobs-launched
                           {:description "Total count of jobs launched per pool and compute cluster"
                            :labels [:pool :compute-cluster]})
+      (prometheus/summary init-user-to-dry-divisors-duration
+                          {:description "Latency distribution of initializing the user to dru divisors map"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary generate-sorted-task-scored-task-pairs-duration
+                          {:description "Latency distribution of generating the sorted list of task and scored task pairs"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-shares-duration
+                          {:description "Latency distribution of getting all users' share"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary create-user-to-share-fn-duration
+                          {:description "Latency distribution of creating the user-to-share function"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
       ;; Match cycle metrics -------------------------------------------------------------------------------------------
       (prometheus/gauge scheduler-match-cycle-jobs-count
                         {:description "Aggregate match cycle job counts stats"
@@ -203,7 +270,7 @@
       (prometheus/gauge scheduler-match-cycle-matched-percent
                         {:description "Percent of jobs matched in last match cycle"
                          :labels [:pool]})
-      ; The follow 1/0 metrics are useful for value map visualizations in Grafana
+      ; The following 1/0 metrics are useful for value map visualizations in Grafana
       (prometheus/gauge scheduler-match-cycle-head-was-matched
                         {:description "1 if head was matched, 0 otherwise"
                          :labels [:pool]})
@@ -363,6 +430,50 @@
                           {:description "Latency distribution of matching an offer"
                            :labels [:compute-cluster]
                            :quantiles default-summary-quantiles})
+      ;; Mesos metrics -------------------------------------------------------------------------------------------------
+      (prometheus/counter mesos-heartbeats
+                          {:description "Count of mesos heartbeats"})
+      (prometheus/counter mesos-heartbeat-timeouts
+                          {:description "Count of mesos heartbeat timeouts"})
+      (prometheus/summary mesos-datomic-sync-duration
+                          {:description "Latency distribution of mesos datomic sync duration"
+                           :quantiles default-summary-quantiles})
+      (prometheus/gauge mesos-offer-chan-depth
+                          {:description "Depth of mesos offer channel"
+                           :labels [:pool]})
+      (prometheus/counter mesos-error
+                          {:description "Count of errors in mesos"})
+      (prometheus/counter mesos-handle-framework-message
+                          {:description "Count of framework messages received in mesos"})
+      (prometheus/counter mesos-handle-status-update
+                          {:description "Count of status updates received in mesos"})
+      (prometheus/counter mesos-tasks-killed-in-status-update
+                          {:description "Count of tasks killed during status updates in mesos"})
+      (prometheus/gauge mesos-aggregator-pending-count
+                          {:description "Count of pending entries in the aggregator"
+                           :labels [:field-name]})
+      (prometheus/gauge mesos-pending-sync-host-count
+                          {:description "Count of pending sync hosts"})
+      (prometheus/gauge mesos-updater-unprocessed-count
+                          {:description "Count of unprocessed tasks in mesos"
+                           :labels []})
+      (prometheus/summary mesos-updater-unprocessed-entries
+                          {:description "Distribution of count of unprocessed entries"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary mesos-updater-pending-entries
+                          {:description "Distribution of count of pending entries"
+                           :quantiles default-summary-quantiles})
+      (prometheus/counter mesos-aggregator-message
+                          {:description "Count of messages received by the aggregator"
+                           :labels [:field-name]})
+      (prometheus/summary mesos-updater-publish-duration
+                          {:description "Latency distribution of mesos updater publish duration"
+                           :labels [:field-name]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary mesos-updater-transact-duration
+                          {:description "Latency distribution of mesos updater transact duration"
+                           :labels [:field-name]
+                           :quantiles default-summary-quantiles})
       ;; API metrics ---------------------------------------------------------------------------------------------------
       (prometheus/counter jobs-created
                           {:description "Total count of jobs created"
@@ -409,11 +520,84 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary get-all-running-jobs-duration
                           {:description "Latency distribution of getting all running jobs"
+                           :quantiles default-summary-quantiles})
+      ;; Plugins metrics -----------------------------------------------------------------------------------------------
+      (prometheus/counter pool-mover-jobs-updated
+                          {:description "Total count of jobs moved to a different pool"})
+      ;; Rebalancer metrics --------------------------------------------------------------------------------------------
+      (prometheus/summary compute-preemption-decision-duration
+                          {:description "Latency distribution of computing preemption decision"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary rebalance-duration
+                          {:description "Latency distribution of rebalancing"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary pending-job-drus
+                          {:description "Distribution of pending jobs drus in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary nearest-task-drus
+                          {:description "Distribution of nearest task drus in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary positive-dru-diffs
+                          {:description "Distribution of positive dru diffs in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary preemption-counts-for-host
+                          {:description "Distribution of preemption counts per host in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary task-counts-to-preempt
+                          {:description "Distribution of number of tasks to preempt in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary job-counts-to-run
+                          {:description "Distribution of number of jobs to run in the rebalancer"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      ;; Progress metrics ----------------------------------------------------------------------------------------------
+      (prometheus/counter progress-aggregator-drop-count
+                          {:description "Total count of dropped progress messages"})
+      (prometheus/counter progress-aggregator-message-count
+                          {:description "Total count of received progress messages"})
+      (prometheus/gauge progress-aggregator-pending-states-count
+                          {:description "Total count of pending states"})
+      (prometheus/summary progress-updater-pending-states
+                          {:description "Distribution of pending states count in the progress updater"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary progress-updater-publish-duration
+                          {:description "Latency distribution of the publish function in the progress updater"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary progress-updater-transact-duration
+                          {:description "Latency distribution of the transact function in the progress updater"
+                           :quantiles default-summary-quantiles})
+      ;; Other metrics -------------------------------------------------------------------------------------------------
+      (prometheus/gauge is-leader
+                        {:description "1 if this host is the current leader, 0 otherwise"})
+      (prometheus/summary update-queue-lengths-duration
+                          {:description "Latency distribution of updating queue lengths from the database"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary acquire-kill-lock-for-kill-duration
+                          {:description "Latency distribution of acquiring the kill lock for kill"
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary get-pending-jobs-duration
+                          {:description "Latency distribution of getting all pending jobs"
                            :quantiles default-summary-quantiles}))))
+
 
 ;; A global registry for all metrics reported by Cook.
 ;; All metrics must be registered before they can be recorded.
 (mount/defstate registry :start (create-registry))
+
+(defmacro value
+  "Get the value of the given metric."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/value registry ~name))
+  ([name labels]
+   `(prometheus/value registry ~name ~labels)))
 
 (defmacro with-duration
   "Wraps the given block and records its execution time to the collector with the given name.
@@ -441,13 +625,23 @@
 
 (defmacro inc
   "Increments the value of the given metric."
-  {:arglists '([name] [name labels])}
+  {:arglists '([name] [name labels] [name labels amount])}
   ([name]
    `(prometheus/inc registry ~name))
   ([name labels]
    `(prometheus/inc registry ~name ~labels))
   ([name labels amount]
    `(prometheus/inc registry ~name ~labels ~amount)))
+
+(defmacro dec
+  "Decrements the value of the given metric."
+  {:arglists '([name] [name labels])}
+  ([name]
+   `(prometheus/dec registry ~name))
+  ([name labels]
+   `(prometheus/dec registry ~name ~labels))
+  ([name labels amount]
+   `(prometheus/dec registry ~name ~labels ~amount)))
 
 (defmacro observe
   "Records the value for the given metric (for histograms and summaries)."

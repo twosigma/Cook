@@ -22,6 +22,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.compute-cluster :as cc]
             [cook.config :as config]
+            [cook.prometheus-metrics :as prom]
             [cook.quota :as quota]
             [cook.scheduler.constraints :as constraints]
             [cook.scheduler.dru :as dru]
@@ -171,6 +172,8 @@
                            (get task->scored-task nearest-task-ent)
                            0.0)
         pending-job-dru (+ nearest-task-dru (/ gpu-req gpu-divisor))]
+    (prom/observe prom/pending-job-drus {:labels pool} (dru-at-scale pending-job-dru))
+    (prom/observe prom/nearest-task-drus {:labels pool} (dru-at-scale nearest-task-dru))
     (histograms/update! (histograms/histogram (metric-title "pending-job-drus" pool)) (dru-at-scale pending-job-dru))
     (histograms/update! (histograms/histogram (metric-title "nearest-task-drus" pool)) (dru-at-scale nearest-task-dru))
 
@@ -197,6 +200,8 @@
                            0.0)
         pending-job-dru (max (+ nearest-task-dru (/ mem-req mem-divisor))
                              (+ nearest-task-dru (/ cpus-req cpus-divisor)))]
+    (prom/observe prom/pending-job-drus {:labels pool} (dru-at-scale pending-job-dru))
+    (prom/observe prom/nearest-task-drus {:labels pool} (dru-at-scale nearest-task-dru))
     (histograms/update! (histograms/histogram (metric-title "pending-job-drus" pool)) (dru-at-scale pending-job-dru))
     (histograms/update! (histograms/histogram (metric-title "nearest-task-drus" pool)) (dru-at-scale nearest-task-dru))
 
@@ -307,7 +312,9 @@
   [pending-job-dru min-dru-diff pool-name task]
   (let [diff (- (:dru task) pending-job-dru)]
     (if (pos? diff)
-      (histograms/update! (histograms/histogram (metric-title "positive-dru-diffs" pool-name)) (dru-at-scale diff)))
+      (do
+        (prom/observe prom/positive-dru-diffs {:pool pool-name} (dru-at-scale diff))
+        (histograms/update! (histograms/histogram (metric-title "positive-dru-diffs" pool-name)) (dru-at-scale diff))))
     (> diff min-dru-diff)))
 
 (defn compute-preemption-decision
@@ -320,81 +327,84 @@
    pool-name
    pending-job-ent
    cotask-cache]
-  (timers/time!
-   (timers/timer (metric-title "compute-preemption-decision-duration" pool-name))
-   (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
-         job-below-quota? (job-below-quota state pending-job-ent)
-         pending-job-dru (compute-pending-job-dru state pool-name pending-job-ent)
-         _ (log/debug "DRU =" pending-job-dru "for pending job" pending-job-ent)
-         ;; This will preserve the ordering of task->scored-task
-         host->scored-tasks (->> task->scored-task
-                                 vals
-                                 (filter (fn [{:keys [task]}]
-                                           (let [job (:job/_instance task)]
-                                             (or job-below-quota?
-                                                 (= (:job/user job)
-                                                    (:job/user pending-job-ent))))))
-                                 (remove #(< (:dru %) safe-dru-threshold))
-                                 (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff pool-name))
-                                 (group-by (fn [{:keys [task]}]
-                                             (:instance/hostname task))))
+  (prom/with-duration
+    prom/compute-preemption-decision-duration {:pool pool-name}
+    (timers/time!
+      (timers/timer (metric-title "compute-preemption-decision-duration" pool-name))
+      (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
+            job-below-quota? (job-below-quota state pending-job-ent)
+            pending-job-dru (compute-pending-job-dru state pool-name pending-job-ent)
+            _ (log/debug "DRU =" pending-job-dru "for pending job" pending-job-ent)
+            ;; This will preserve the ordering of task->scored-task
+            host->scored-tasks (->> task->scored-task
+                                    vals
+                                    (filter (fn [{:keys [task]}]
+                                              (let [job (:job/_instance task)]
+                                                (or job-below-quota?
+                                                    (= (:job/user job)
+                                                       (:job/user pending-job-ent))))))
+                                    (remove #(< (:dru %) safe-dru-threshold))
+                                    (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff pool-name))
+                                    (group-by (fn [{:keys [task]}]
+                                                (:instance/hostname task))))
 
-         host->formatted-spare-resources (->> host->spare-resources
-                                              (map (fn [[host {:keys [mem cpus gpus]}]]
-                                                     [host [{:dru Double/MAX_VALUE :task nil :mem mem :cpus cpus :gpus gpus}]]))
-                                              (into {}))
+            host->formatted-spare-resources (->> host->spare-resources
+                                                 (map (fn [[host {:keys [mem cpus gpus]}]]
+                                                        [host [{:dru Double/MAX_VALUE :task nil :mem mem :cpus cpus :gpus gpus}]]))
+                                                 (into {}))
 
-         job-constraints (constraints/make-rebalancer-job-constraints
-                           pending-job-ent (partial util/get-slave-attrs-from-cache agent-attributes-cache))
-         group-constraints (->> pending-job-ent
-                                :group/_job
-                                (map #(constraints/make-rebalancer-group-constraint
-                                        db
-                                        %
-                                        (partial util/get-slave-attrs-from-cache agent-attributes-cache)
-                                        preempted-tasks
-                                        cotask-cache))
-                                (remove nil?))
-         constraints (into (vec job-constraints) group-constraints)
+            job-constraints (constraints/make-rebalancer-job-constraints
+                              pending-job-ent (partial util/get-slave-attrs-from-cache agent-attributes-cache))
+            group-constraints (->> pending-job-ent
+                                   :group/_job
+                                   (map #(constraints/make-rebalancer-group-constraint
+                                           db
+                                           %
+                                           (partial util/get-slave-attrs-from-cache agent-attributes-cache)
+                                           preempted-tasks
+                                           cotask-cache))
+                                   (remove nil?))
+            constraints (into (vec job-constraints) group-constraints)
 
-         preemptable-host->slave-id (->> task->scored-task
-                                         keys
-                                         (map (juxt :instance/hostname :instance/slave-id))
-                                         (into {}))
+            preemptable-host->slave-id (->> task->scored-task
+                                            keys
+                                            (map (juxt :instance/hostname :instance/slave-id))
+                                            (into {}))
 
-         passes-constraints? (fn [hostname] (every? #(% pending-job-ent (get preemptable-host->slave-id hostname))
-                                                    constraints))
-         ;; Get all the unconstrained slaves and hosts
-         ;; Here we do a greedy search instead of bin packing. A preemption decision contains a prefix of scored
-         ;; tasks on a specific host.
-         ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
-         preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
-                                  ; Only evaluate tasks in unconstrained slaves
-                                  (filter (comp passes-constraints? key))
-                                  (sort-by first)
-                                  (mapcat (fn compute-aggregations [[host scored-tasks]]
-                                            (rest
-                                             (reductions
-                                              (fn aggregate-scored-tasks [aggregation {:keys [dru task mem cpus gpus] :as scored-task}]
-                                                {:hostname host
-                                                 :dru dru
-                                                 :task (if task
-                                                         (conj (:task aggregation) task)
-                                                         (:task aggregation))
-                                                 :gpus (+ (:gpus aggregation) (or gpus 0.0))
-                                                 :mem (+ (:mem aggregation) (or mem 0))
-                                                 :cpus (+ (:cpus aggregation) (or cpus 0))})
-                                              {:hostname host :task nil :mem 0.0 :cpus 0.0 :gpus 0.0}
-                                              scored-tasks))))
-                                  (filter (fn has-enough-resource [resource-sum]
-                                            (and (>= (:mem resource-sum) pending-job-mem)
-                                                 (>= (:cpus resource-sum) pending-job-cpus)
-                                                 (if pending-job-gpus
-                                                   (>= (:gpus resource-sum) pending-job-gpus)
-                                                   true))))
-                                  (apply max-key (fnil :dru {:dru 0.0}) nil))]
-     (histograms/update! (histograms/histogram (metric-title "preemption-counts-for-host" pool-name)) (-> preemption-decision :tasks count))
-     preemption-decision)))
+            passes-constraints? (fn [hostname] (every? #(% pending-job-ent (get preemptable-host->slave-id hostname))
+                                                       constraints))
+            ;; Get all the unconstrained slaves and hosts
+            ;; Here we do a greedy search instead of bin packing. A preemption decision contains a prefix of scored
+            ;; tasks on a specific host.
+            ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
+            preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
+                                     ; Only evaluate tasks in unconstrained slaves
+                                     (filter (comp passes-constraints? key))
+                                     (sort-by first)
+                                     (mapcat (fn compute-aggregations [[host scored-tasks]]
+                                               (rest
+                                                 (reductions
+                                                   (fn aggregate-scored-tasks [aggregation {:keys [dru task mem cpus gpus] :as scored-task}]
+                                                     {:hostname host
+                                                      :dru dru
+                                                      :task (if task
+                                                              (conj (:task aggregation) task)
+                                                              (:task aggregation))
+                                                      :gpus (+ (:gpus aggregation) (or gpus 0.0))
+                                                      :mem (+ (:mem aggregation) (or mem 0))
+                                                      :cpus (+ (:cpus aggregation) (or cpus 0))})
+                                                   {:hostname host :task nil :mem 0.0 :cpus 0.0 :gpus 0.0}
+                                                   scored-tasks))))
+                                     (filter (fn has-enough-resource [resource-sum]
+                                               (and (>= (:mem resource-sum) pending-job-mem)
+                                                    (>= (:cpus resource-sum) pending-job-cpus)
+                                                    (if pending-job-gpus
+                                                      (>= (:gpus resource-sum) pending-job-gpus)
+                                                      true))))
+                                     (apply max-key (fnil :dru {:dru 0.0}) nil))]
+        (prom/observe prom/preemption-counts-for-host {:pool pool-name} (-> preemption-decision :tasks count))
+        (histograms/update! (histograms/histogram (metric-title "preemption-counts-for-host" pool-name)) (-> preemption-decision :tasks count))
+        preemption-decision))))
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
@@ -425,7 +435,8 @@
   "Returns a list of pending job entities to run and a list of task entities to preempt"
   [db agent-attributes-cache rebalancer-reservation-atom
    {:keys [max-preemption] :as params} init-state jobs-to-make-room-for pool-name]
-  (let [timer (timers/start (timers/timer (metric-title "rebalance-duration" pool-name)))
+  (let [prom-timer-stop-fn (prom/start-timer prom/rebalance-duration)
+        timer (timers/start (timers/timer (metric-title "rebalance-duration" pool-name)))
         cotask-cache (atom (cache/lru-cache-factory {} :threshold (max 1 max-preemption)))]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
@@ -446,7 +457,10 @@
                    jobs-to-make-room-for
                    preemption-decisions)))
         (do
+          (prom-timer-stop-fn)
           (timers/stop timer)
+          (prom/observe prom/task-counts-to-preempt {:pool pool-name} (count (mapcat :task preemption-decisions)))
+          (prom/observe prom/job-counts-to-run {:pool pool-name} (count preemption-decisions))
           (histograms/update! (histograms/histogram (metric-title "task-counts-to-preempt" pool-name)) (count (mapcat :task preemption-decisions)))
           (histograms/update! (histograms/histogram (metric-title "job-counts-to-run" pool-name)) (count preemption-decisions))
           (reserve-hosts! rebalancer-reservation-atom preemption-decisions)

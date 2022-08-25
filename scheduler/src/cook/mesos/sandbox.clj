@@ -21,6 +21,7 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.prometheus-metrics :as prom]
             [cook.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
@@ -33,9 +34,11 @@
    Since we expect instances to have the same field value, we do not check for value equality."
   [task-id->value field-name published-task-id->value]
   (let [field-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" field-name "aggregator-pending-count"])
-        task-id->value' (apply dissoc task-id->value (keys published-task-id->value))]
+        task-id->value' (apply dissoc task-id->value (keys published-task-id->value))
+        task-id->value-count (count task-id->value')]
+    (prom/set prom/mesos-aggregator-pending-count {:field-name field-name} task-id->value-count)
     (counters/clear! field-aggregator-pending-count)
-    (counters/inc! field-aggregator-pending-count (count task-id->value'))
+    (counters/inc! field-aggregator-pending-count task-id->value-count)
     task-id->value'))
 
 (defn aggregate-instance-field
@@ -48,9 +51,11 @@
   ([task-id->value field-name task-id value]
    (let [field-aggregator-message-rate (meters/meter ["cook-mesos" "scheduler" field-name "aggregator-message-rate"])
          field-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" field-name "aggregator-pending-count"])]
+     (prom/inc prom/mesos-aggregator-message {:field-name field-name})
      (meters/mark! field-aggregator-message-rate)
      (if (and task-id value (not (contains? task-id->value task-id)))
        (let [task-id->value' (assoc task-id->value task-id value)]
+         (prom/inc prom/mesos-aggregator-pending-count {:field-name field-name})
          (counters/inc! field-aggregator-pending-count)
          task-id->value')
        task-id->value)))
@@ -72,26 +77,31 @@
         field-updater-publish-duration (timers/timer ["cook-mesos" "scheduler" field-name "updater-publish-duration"])
         field-updater-tx-duration (timers/timer ["cook-mesos" "scheduler" field-name "updater-tx-duration"])
         field-updater-tx-rate (meters/meter ["cook-mesos" "scheduler" field-name "updater-tx-rate"])]
+    (prom/observe prom/mesos-updater-pending-entries task-count)
     (histograms/update! field-updater-pending-entries task-count)
     (meters/mark! field-updater-publish-rate)
     (when (pos? task-count)
       (log/info "Publishing" field-name "of" task-count "instance(s)")
-      (timers/time!
-        field-updater-publish-duration
-        (doseq [task-id->value-partition (partition-all batch-size task-id->value)]
-          (try
-            (letfn [(build-txns [[task-id value]]
-                      [:db/add [:instance/task-id task-id] instance-field value])]
-              (let [txns (map build-txns task-id->value-partition)]
-                (when (seq txns)
-                  (log/info "Inserting" (count txns) "facts in" field-name "state update")
-                  (meters/mark! field-updater-tx-rate)
-                  (timers/time!
-                    field-updater-tx-duration
-                    @(d/transact datomic-conn txns)))))
-            (send task-id->value-agent clear-agent-state field-name task-id->value-partition)
-            (catch Exception e
-              (log/error e (str field-name " batch update error")))))))
+      (prom/with-duration
+        prom/mesos-updater-publish-duration {:field-name field-name}
+        (timers/time!
+          field-updater-publish-duration
+          (doseq [task-id->value-partition (partition-all batch-size task-id->value)]
+            (try
+              (letfn [(build-txns [[task-id value]]
+                        [:db/add [:instance/task-id task-id] instance-field value])]
+                (let [txns (map build-txns task-id->value-partition)]
+                  (when (seq txns)
+                    (log/info "Inserting" (count txns) "facts in" field-name "state update")
+                    (meters/mark! field-updater-tx-rate)
+                    (prom/with-duration
+                      prom/mesos-updater-transact-duration {:field-name field-name}
+                      (timers/time!
+                        field-updater-tx-duration
+                        @(d/transact datomic-conn txns))))))
+              (send task-id->value-agent clear-agent-state field-name task-id->value-partition)
+              (catch Exception e
+                (log/error e (str field-name " batch update error"))))))))
     {}))
 
 (defn retrieve-sandbox-directories-on-agent
@@ -128,7 +138,9 @@
   "Updates the sandbox-pending-sync-host-count to the number of pending sync hosts and returns the input."
   [{:keys [pending-sync-hosts] :as pending-sync-state}]
   (counters/clear! sandbox-pending-sync-host-count)
+  (prom/set prom/mesos-pending-sync-host-count 0)
   (when (seq pending-sync-hosts)
+    (prom/set prom/mesos-pending-sync-host-count (count pending-sync-hosts))
     (counters/inc! sandbox-pending-sync-host-count (count pending-sync-hosts)))
   pending-sync-state)
 
@@ -159,11 +171,13 @@
              (let [unprocessed-task-ids (get unprocessed-host->task-ids-in-atom host #{})]
                (if-not (contains? unprocessed-task-ids task-id)
                  (do
+                   (prom/inc prom/mesos-updater-unprocessed-count)
                    (counters/inc! sandbox-updater-unprocessed-count)
                    (->> task-id
                         (conj unprocessed-task-ids)
                         (assoc unprocessed-host->task-ids-in-atom host)))
                  unprocessed-host->task-ids-in-atom))))
+    (prom/observe prom/mesos-updater-unprocessed-entries (prom/value prom/mesos-updater-unprocessed-count))
     (histograms/update! sandbox-updater-unprocessed-entries (counters/value sandbox-updater-unprocessed-count))))
 
 (defn- remove-processed-task-ids!
@@ -172,15 +186,17 @@
   (swap! unprocessed-host->task-ids-atom
          (fn [unprocessed-host->task-ids-in-atom]
            (let [unprocessed-task-ids (get unprocessed-host->task-ids-in-atom host #{})
-                 unprocessed-task-ids' (set/difference unprocessed-task-ids task-ids)]
+                 unprocessed-task-ids' (set/difference unprocessed-task-ids task-ids)
+                 unprocessed-tasks-count (- (count unprocessed-task-ids) (count unprocessed-task-ids'))]
              (if (not= unprocessed-task-ids unprocessed-task-ids')
                (do
-                 (->> (- (count unprocessed-task-ids') (count unprocessed-task-ids))
-                      (counters/inc! sandbox-updater-unprocessed-count))
+                 (counters/dec! sandbox-updater-unprocessed-count unprocessed-tasks-count)
+                 (prom/dec prom/mesos-updater-unprocessed-count {} unprocessed-tasks-count)
                  (if (seq unprocessed-task-ids')
                    (assoc unprocessed-host->task-ids-in-atom host unprocessed-task-ids')
                    (dissoc unprocessed-host->task-ids-in-atom host)))
                unprocessed-host->task-ids-in-atom))))
+  (prom/observe prom/mesos-updater-unprocessed-entries (prom/value prom/mesos-updater-unprocessed-count))
   (histograms/update! sandbox-updater-unprocessed-entries (counters/value sandbox-updater-unprocessed-count)))
 
 (defn- process-task-id->sandbox-directory-on-host

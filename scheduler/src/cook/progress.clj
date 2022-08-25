@@ -18,6 +18,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
+            [cook.prometheus-metrics :as prom]
             [cook.tools :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
@@ -39,6 +40,7 @@
    We avoid this stale check in the datomic transaction as it is relatively expensive to perform the checks on a per
    instance basis in the query."
   [pending-threshold sequence-cache-store instance-id->progress-state {:keys [instance-id] :as data}]
+  (prom/inc prom/progress-aggregator-message-count)
   (meters/mark! progress-aggregator-message-rate)
   (if (or (< (count instance-id->progress-state) pending-threshold)
           (contains? instance-id->progress-state instance-id))
@@ -57,13 +59,16 @@
         (let [old-count (count instance-id->progress-state)
               new-count (count instance-id->progress-state')]
           (when (zero? old-count)
+            (prom/set prom/progress-aggregator-pending-states-count 0)
             (counters/clear! progress-aggregator-pending-states-count))
+          (prom/inc prom/progress-aggregator-pending-states-count (- new-count old-count))
           (counters/inc! progress-aggregator-pending-states-count (- new-count old-count)))
         instance-id->progress-state')
       (do
         (log/warn "skipping" data "as it is missing an integer progress-sequence")
         instance-id->progress-state))
     (do
+      (prom/inc prom/progress-aggregator-drop-count)
       (meters/mark! progress-aggregator-drop-rate)
       (counters/inc! progress-aggregator-drop-count)
       (log/debug "Dropping" data "as threshold has been reached")
@@ -119,26 +124,31 @@
   "Transacts the latest aggregated instance-id->progress-state to datomic.
    No more than batch-size facts are updated in individual datomic transactions."
   [conn instance-id->progress-state batch-size]
+  (prom/observe prom/progress-updater-pending-states (count instance-id->progress-state))
   (histograms/update! progress-updater-pending-states (count instance-id->progress-state))
   (meters/mark! progress-updater-publish-rate)
-  (timers/time!
-    progress-updater-publish-duration
-    (doseq [instance-id->progress-state-partition
-            (partition-all batch-size instance-id->progress-state)]
-      (try
-        (letfn [(build-progress-txns [[instance-id {:keys [progress-percent progress-message]}]]
-                  (cond-> []
-                    progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
-                    progress-message (conj [:db/add instance-id :instance/progress-message progress-message])))]
-          (let [txns (mapcat build-progress-txns instance-id->progress-state-partition)]
-            (when (seq txns)
-              (log/info "Performing" (count txns) "in progress state update")
-              (meters/mark! progress-updater-tx-rate)
-              (timers/time!
-                progress-updater-tx-duration
-                @(d/transact conn txns)))))
-        (catch Exception e
-          (log/error e "Progress batch update error"))))))
+  (prom/with-duration
+    prom/progress-updater-publish-duration {}
+    (timers/time!
+      progress-updater-publish-duration
+      (doseq [instance-id->progress-state-partition
+              (partition-all batch-size instance-id->progress-state)]
+        (try
+          (letfn [(build-progress-txns [[instance-id {:keys [progress-percent progress-message]}]]
+                    (cond-> []
+                      progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
+                      progress-message (conj [:db/add instance-id :instance/progress-message progress-message])))]
+            (let [txns (mapcat build-progress-txns instance-id->progress-state-partition)]
+              (when (seq txns)
+                (log/info "Performing" (count txns) "in progress state update")
+                (meters/mark! progress-updater-tx-rate)
+                (prom/with-duration
+                  prom/progress-updater-transact-duration {}
+                  (timers/time!
+                    progress-updater-tx-duration
+                    @(d/transact conn txns))))))
+          (catch Exception e
+            (log/error e "Progress batch update error")))))))
 
 (defn progress-update-transactor
   "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state

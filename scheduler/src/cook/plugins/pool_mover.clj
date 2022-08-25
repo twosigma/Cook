@@ -3,6 +3,7 @@
             [cook.cached-queries :as cached-queries]
             [cook.config :as config]
             [cook.plugins.definitions :as chd]
+            [cook.prometheus-metrics :as prom]
             [datomic.api :as d]
             [metrics.counters :as counters]))
 
@@ -20,6 +21,7 @@
               (try
                 (log/info "Moving job" uuid "(" user ") from" submission-pool "pool to"
                           destination-pool "pool due to pool-mover configuration")
+                (prom/inc prom/pool-mover-jobs-updated)
                 (counters/inc! jobs-migrated)
                 (assoc job-txn :job/pool (-> db (d/entity [:pool/name destination-pool]) :db/id))
                 (catch Throwable t

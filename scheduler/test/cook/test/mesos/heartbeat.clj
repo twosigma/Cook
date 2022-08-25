@@ -19,7 +19,7 @@
             [clojure.test :refer :all]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.test.postgres]
-            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database!]]
+            [cook.test.testutil :refer [create-dummy-instance create-dummy-job restore-fresh-database! setup]]
             [datomic.api :as d :refer [q]]))
 
 (use-fixtures :once cook.test.postgres/with-pg-db)
@@ -44,6 +44,7 @@
             (heartbeat/handle-timeout state db timeout-ch)))))
 
 (deftest test-sync-with-datomic
+  (setup)
   (testing
     (let [datomic-uri "datomic:mem://test-sync-with-datomic"
           conn (restore-fresh-database! datomic-uri)
