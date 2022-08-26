@@ -1102,13 +1102,11 @@
                        available-compute-clusters
                        (filter
                         (fn [compute-cluster]
-                          (if (-> @capacity-counter-atom compute-cluster pos?)
-                            true
-                            (do
-                              (log-structured/error "Compute cluster given to distributor is not tracking scheduling capacity"
-                                                    {:pool-name pool-name
-                                                     :compute-cluster compute-cluster})
-                              false)))
+                          (let [capacity (get @capacity-counter-atom compute-cluster)]
+                            (when (nil? capacity)
+                              (throw (ex-info "Compute cluster given to distributor is not tracking scheduling capacity" 
+                                              {:pool-name pool-name :compute-cluster compute-cluster})))
+                            (pos? capacity)))
                         acceptable-compute-clusters)]
                    (if (empty? available-compute-clusters)
                      :no-acceptable-compute-cluster
