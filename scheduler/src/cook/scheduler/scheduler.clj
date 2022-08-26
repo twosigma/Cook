@@ -1635,17 +1635,25 @@
        (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
        (let [launch-distributed-job-fn
              (fn [[compute-cluster jobs]]
-               (let [max-launchable (cc/max-launchable compute-cluster pool-name)
-                     launchable-jobs (take max-launchable jobs) ; TODO: log un-launchable later in fn
+               (let [cc-name (cc/compute-cluster-name compute-cluster)
+                     ; TODO: we want to do this filtering one level higher, in the
+                     ; distro fn. We end up with `jobs` being exactly what we want
+                     ; to launch.
+                     max-launchable (cc/max-launchable compute-cluster pool-name)
+                     launchable-jobs (take max-launchable jobs)
+                     launchable-jobs-count (count launchable-jobs)
+                     unlaunchable-jobs-count (- (count jobs) launchable-jobs-count)
                      task-metadata-seq (jobs->kubernetes-task-metadata launchable-jobs pool-name mesos-run-as-user compute-cluster)
                      psuedo-matches [{:task-metadata-seq task-metadata-seq}]
                      task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) launchable-jobs task-metadata-seq)]
-                 (launch-tasks-for-cluster compute-cluster psuedo-matches task-txns pool-name conn nil false)))]
+                 (launch-tasks-for-cluster compute-cluster psuedo-matches task-txns pool-name conn nil false)
+                 (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :compute-cluster cc-name
+                                                                     :max-launchable max-launchable
+                                                                     :number-launched-jobs launchable-jobs-count
+                                                                     :number-unlaunched-jobs unlaunchable-jobs-count})))]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
          (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters
-                                     job->acceptable-compute-clusters-fn launch-distributed-job-fn)
-         ; TODO: change count to actual launched
-         (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :number-launched-jobs (count considerable-jobs)}))))))
+                                     job->acceptable-compute-clusters-fn launch-distributed-job-fn))))))
 
 (defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs using the Kubernetes Scheduler."
@@ -1653,16 +1661,25 @@
    job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
   (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
   (try
-    (let [; NOTE: this is required to properly filter compute clusters to
+    (let [; This is required to properly filter compute clusters to
           ; those configured for this pool. This is done via the synthetic-pods
           ; config, accessed via the autoscaling? method. In the future, this list
           ; of pools should be slightly restructured to be listed one level higher,
           ; on the compute-cluster-template config.
-          compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
+          compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters) 
           max-total-considerable (:max-jobs-considered scheduler-config)
           minimum-scheduling-capacity-threshold (:minimum-scheduling-capacity-threshold scheduler-config)
           available-scheduling-capacity (reduce #(+ %1 (cc/max-launchable %2 pool-name)) 0 compute-clusters-for-pool)
+          ; We can avoid some expensive calculations (e.g. quotas) for jobs
+          ; that ultimately will not be scheduled this cycle, if we clamp
+          ; max considerable to the current available scheduling capacity.
           max-considerable (min max-total-considerable available-scheduling-capacity)]
+      (log-structured/info "Cycle available scheduling capacity"
+                           {:available-scheduling-capacity available-scheduling-capacity 
+                            :max-considerable max-considerable :pool pool-name})
+      
+      ; A minimum threshold prevents incurring cycle overhead for a small number
+      ; of jobs that could be scheduled this cycle, due to low available scheduling capacity.
       (if (> available-scheduling-capacity minimum-scheduling-capacity-threshold)
         (let [db (db conn)
               pending-jobs (get @pool-name->pending-jobs-atom pool-name)
@@ -1684,7 +1701,7 @@
                                              mesos-run-as-user job->acceptable-compute-clusters-fn))
             (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
         (do
-          ;; TODO: pause or otherwise delay the next scheduling cycle.
+          ; TODO: pause or otherwise delay the next scheduling cycle.
           (log-structured/info "Available scheduling capacity is below threshold, pausing scheduling"
                                {:available-scheduling-capacity available-scheduling-capacity
                                 :minimum-scheduling-capacity-threshold minimum-scheduling-capacity-threshold
