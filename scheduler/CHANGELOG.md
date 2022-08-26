@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.62.6] - 2022-08-26
+### Added
+- Initial implementation for submitting jobs directly to Kubernetes Scheduler, from @ahaysx
+- Better error handling in scheduler/write functions, from @ahaysx
+- Launch tasks similarly for both Fenzo and K8s Scheduler pools, from @ahaysx
+- Adding prometheus metrics to remaining modules, from @samincheva
+
+### Fixed
+- Optimizing total pod count metric and fixing mismatched metric labels, from @samincheva
+
 ## [1.62.5] - 2022-08-18
 ### Added
 - Make Fenzo config pool-specific and set up for other schedulers, from @ahaysx
