@@ -307,10 +307,10 @@
       ;; Kubernetes metrics --------------------------------------------------------------------------------------------
       (prometheus/gauge total-pods
                         {:description "Total current number of pods per compute cluster"
-                         :labels [:pool]})
+                         :labels [:compute-cluster]})
       (prometheus/gauge max-pods
                         {:description "Max number of pods per compute cluster"
-                         :labels [:pool]})
+                         :labels [:compute-cluster]})
       (prometheus/gauge total-synthetic-pods
                         {:description "Total current number of synthetic pods per pool and compute cluster"
                          :labels [:pool :compute-cluster]})
@@ -322,10 +322,10 @@
                          :labels [:compute-cluster]})
       (prometheus/gauge total-nodes
                         {:description "Total current number of nodes per compute cluster"
-                         :labels [:pool]})
+                         :labels [:compute-cluster]})
       (prometheus/gauge max-nodes
                         {:description "Max number of nodes per compute cluster"
-                         :labels [:pool]})
+                         :labels [:compute-cluster]})
       (prometheus/summary watch-gap
                           {:description "Latency distribution of the gap between last watch response and current response"
                            :labels [:compute-cluster :object]
