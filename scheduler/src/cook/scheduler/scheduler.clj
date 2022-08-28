@@ -1714,6 +1714,7 @@
           compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters) 
           max-total-considerable (:max-jobs-considered scheduler-config)
           minimum-scheduling-capacity-threshold (:minimum-scheduling-capacity-threshold scheduler-config)
+          scheduling-pause-time-ms (:scheduling-pause-time-ms scheduler-config)
           compute-cluster->scheduling-capacity (pc/map-from-keys #(cc/max-launchable % pool-name) compute-clusters-for-pool)
           available-scheduling-capacity (reduce + (vals compute-cluster->scheduling-capacity))
           ; We can avoid some expensive calculations (e.g. quotas) for jobs
@@ -1748,12 +1749,13 @@
                                              job->acceptable-compute-clusters-fn))
             (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
         (do
-          ; TODO: pause or otherwise delay the next scheduling cycle.
           (log-structured/info "Available scheduling capacity is below threshold, pausing scheduling"
                                {:available-scheduling-capacity available-scheduling-capacity
                                 :minimum-scheduling-capacity-threshold minimum-scheduling-capacity-threshold
                                 :max-total-considerable max-total-considerable
-                                :pool pool-name}))))
+                                :scheduling-pause-time-ms scheduling-pause-time-ms
+                                :pool pool-name})
+          (Thread/sleep scheduling-pause-time-ms))))
     (catch Exception e
       (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
 
