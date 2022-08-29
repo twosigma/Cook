@@ -1084,6 +1084,11 @@
                               :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
       (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
+(defn decrement-scheduling-capacity-counter
+  "Decrement capacity for compute cluster in the counter."
+  [capacity-counter compute-cluster]
+  (update-in capacity-counter [compute-cluster] dec))
+
 (defn create-scheduling-capacity-constrained-job-distributor
   "Create a job distributor function that only assigns jobs to compute clusters
    with available scheduling capacity. Assignments are tracked and the given
@@ -1112,8 +1117,7 @@
                      :no-acceptable-compute-cluster
                      (let [assigned-compute-cluster (nth available-compute-clusters
                                                          (-> uuid hash (mod (count available-compute-clusters))))]
-                       (swap! compute-cluster->scheduling-capacity
-                              (update-in compute-cluster->scheduling-capacity [assigned-compute-cluster] dec))
+                       (swap! capacity-counter-atom assigned-compute-cluster)
                        assigned-compute-cluster))))
                autoscalable-jobs)]
           (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
