@@ -1117,7 +1117,8 @@
                      :no-acceptable-compute-cluster
                      (let [assigned-compute-cluster (nth available-compute-clusters
                                                          (-> uuid hash (mod (count available-compute-clusters))))]
-                       (swap! capacity-counter-atom assigned-compute-cluster)
+                       (swap! capacity-counter-atom 
+                              decrement-scheduling-capacity-counter assigned-compute-cluster)
                        assigned-compute-cluster))))
                autoscalable-jobs)]
           (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
