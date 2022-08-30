@@ -1085,9 +1085,9 @@
       (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
 (defn decrement-scheduling-capacity-counter
-  "Decrement capacity for compute cluster in the counter."
-  [capacity-counter compute-cluster]
-  (update-in capacity-counter [compute-cluster] dec))
+  "Decrement the available scheduling capacity for the compute cluster."
+  [compute-cluster->available-scheduling-capacity compute-cluster]
+  (update-in compute-cluster->available-scheduling-capacity [compute-cluster] dec))
 
 (defn scheduling-capacity-constrained-job-distributor
   "Create a job distributor function that only assigns jobs to compute clusters
@@ -1096,7 +1096,7 @@
   [compute-cluster->scheduling-capacity autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (tracing/with-span [s {:name "scheduler.distribute-jobs-to-compute-cluster"
                          :tags {:pool pool-name :component tracing-component-tag}}]
-    (let [capacity-counter-atom (atom compute-cluster->scheduling-capacity)
+    (let [compute-cluster->available-scheduling-capacity-atom (atom compute-cluster->scheduling-capacity)
           compute-cluster->jobs
           (group-by
            (fn choose-compute-cluster-for-autoscaling
@@ -1106,17 +1106,25 @@
                    available-compute-clusters
                    (filter
                     (fn [compute-cluster]
-                      (let [capacity (get @capacity-counter-atom compute-cluster)]
-                        (when (nil? capacity)
-                          (throw (ex-info "Compute cluster given to distributor is not tracking scheduling capacity"
-                                          {:pool-name pool-name :compute-cluster compute-cluster})))
-                        (pos? capacity)))
+                      (let [capacity (get @compute-cluster->available-scheduling-capacity-atom
+                                          compute-cluster)]
+
+                        (if (some? capacity)
+                          (pos? capacity)
+                          (do
+                            (log-structured/error
+                             "Not tracking available scheduling capacity of compute cluster considered in distributor"
+                             {:pool-name pool-name :compute-cluster compute-cluster})
+                            false))))
                     acceptable-compute-clusters)]
                (if (empty? available-compute-clusters)
                  :no-acceptable-compute-cluster
-                 (let [assigned-compute-cluster (nth available-compute-clusters
-                                                     (-> uuid hash (mod (count available-compute-clusters))))]
-                   (swap! capacity-counter-atom
+                 (let [assigned-compute-cluster
+                       (nth available-compute-clusters
+                            (-> uuid
+                                hash
+                                (mod (count available-compute-clusters))))]
+                   (swap! compute-cluster->available-scheduling-capacity-atom
                           decrement-scheduling-capacity-counter assigned-compute-cluster)
                    assigned-compute-cluster))))
            autoscalable-jobs)]
