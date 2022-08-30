@@ -552,8 +552,7 @@
          ; pods in the compute cluster. This configuration, set on the compute cluster
          ; template, will be refactored in the future to more generally define autoscaling 
          ; parameters once synthetic pods are decommissioned.
-         {:keys [max-pods-outstanding max-total-pods max-total-nodes]
-          :or {max-total-pods 32000 max-total-nodes 1000}} synthetic-pods-config]
+         {:keys [max-pods-outstanding max-total-pods max-total-nodes]} synthetic-pods-config]
 
      (when (>= total-pods max-total-pods)
        (log-structured/warn "Total pods are maxed out"
@@ -858,10 +857,12 @@
   [compute-cluster-name synthetic-pods-config]
   (when synthetic-pods-config
     (when-not (and
-                (-> synthetic-pods-config :image count pos?)
-                (-> synthetic-pods-config :max-pods-outstanding pos?)
-                (-> synthetic-pods-config :pools set?)
-                (-> synthetic-pods-config :pools count pos?))
+               (-> synthetic-pods-config :image count pos?)
+               (-> synthetic-pods-config :max-pods-outstanding pos?)
+               (-> synthetic-pods-config :max-total-pods pos?)
+               (-> synthetic-pods-config :max-total-nodes pos?)
+               (-> synthetic-pods-config :pools set?)
+               (-> synthetic-pods-config :pools count pos?))
       (throw (ex-info (str "In " compute-cluster-name " compute cluster, invalid synthetic pods config")
                       synthetic-pods-config)))))
 
