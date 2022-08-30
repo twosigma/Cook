@@ -1710,12 +1710,14 @@
          (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters
                                      job->acceptable-compute-clusters-fn
                                      distributor-fn
-                                     kubernetes-jobs-launcher))))))
+                                     kubernetes-jobs-launcher)
+         (log-structured/info "Done launching jobs in Kubernetes" {:pool pool-name}))))))
 
 (defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs using the Kubernetes Scheduler."
-  [conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
-   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
+  [conn pool-name->pending-jobs-atom pool-name 
+   {:keys [max-jobs-considered minimum-scheduling-capacity-threshold scheduling-pause-time-ms]} 
+   compute-clusters job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
   (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
   (try
     (let [; This is required to properly filter compute clusters to
@@ -1723,16 +1725,13 @@
           ; config, accessed via the autoscaling? method. In the future, this list
           ; of pools should be slightly restructured to be listed one level higher,
           ; on the compute-cluster-template config.
-          compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters) 
-          max-total-considerable (:max-jobs-considered scheduler-config)
-          minimum-scheduling-capacity-threshold (:minimum-scheduling-capacity-threshold scheduler-config)
-          scheduling-pause-time-ms (:scheduling-pause-time-ms scheduler-config)
+          compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
           compute-cluster->scheduling-capacity (pc/map-from-keys #(cc/max-launchable % pool-name) compute-clusters-for-pool)
           available-scheduling-capacity (reduce + (vals compute-cluster->scheduling-capacity))
           ; We can avoid some expensive calculations (e.g. quotas) for jobs
           ; that ultimately will not be scheduled this cycle, if we clamp
           ; max considerable to the current available scheduling capacity.
-          max-considerable (min max-total-considerable available-scheduling-capacity)]
+          max-considerable (min max-jobs-considered available-scheduling-capacity)]
       (log-structured/info "Cycle available scheduling capacity"
                            {:available-scheduling-capacity available-scheduling-capacity 
                             :max-considerable max-considerable :pool pool-name})
@@ -1766,7 +1765,7 @@
           (log-structured/info "Available scheduling capacity is below threshold, pausing scheduling"
                                {:available-scheduling-capacity available-scheduling-capacity
                                 :minimum-scheduling-capacity-threshold minimum-scheduling-capacity-threshold
-                                :max-total-considerable max-total-considerable
+                                :max-jobs-considered max-jobs-considered
                                 :scheduling-pause-time-ms scheduling-pause-time-ms
                                 :pool pool-name})
           (Thread/sleep scheduling-pause-time-ms))))
