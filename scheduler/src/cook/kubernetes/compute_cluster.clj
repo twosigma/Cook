@@ -379,11 +379,20 @@
      (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding))))
 
 (defn get-scheduling-pods
-  "Get the pods that are still being scheduled by Kubernetes. We consider pods
-   not yet bound to a node when filtering for this state. Pods with 'Pending' 
-   status are not considered, since this phase includes time spent pulling images
-   onto the host. Depending on that status would not acurately reflect the pressure
-   inside the Kubernetes Scheduler."
+  "Get the pods that are still being scheduled by Kubernetes. This is 
+   done by filtering pods not yet bound to a node from the set of 
+   pods Cook thinks is running.
+
+   This is particularly useful when utilizing the Kubernetes Scheduler
+   to bin pack jobs. Pressure inside the scheduler is measured and then
+   reduced by only having so many outstanding, unscheduled pods at any 
+   given time.
+
+   Filtering for node assignments is the best approximation of this 
+   pressure. Depending on pods with 'Pending' status is problematic. 
+   It includes time spent pulling images onto nodes, after they have 
+   been assigned by the scheduler. This status does not accurately 
+   reflect the pressure inside the Kubernetes Scheduler."
   [compute-cluster pool-name]
   (->> (get-pods-in-pool compute-cluster pool-name)
        (add-starting-pods compute-cluster)

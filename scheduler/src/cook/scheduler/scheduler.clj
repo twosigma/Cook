@@ -1743,6 +1743,8 @@
                                                    :number-pending-jobs (count pending-jobs)})
           (if (seq considerable-jobs)
             (do
+              ; Remove the considerable jobs from consideration from matching,
+              ; until we do a rank cycle again.
               (swap! pool-name->pending-jobs-atom
                      remove-matched-jobs-from-pending-jobs
                      considerable-job-uuids pool-name)
