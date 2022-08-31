@@ -1108,7 +1108,6 @@
                     (fn [compute-cluster]
                       (let [capacity (get @compute-cluster->available-scheduling-capacity-atom
                                           compute-cluster)]
-
                         (if (some? capacity)
                           (pos? capacity)
                           (do

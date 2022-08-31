@@ -2645,7 +2645,32 @@
               (is (= (metadata-job :job/user)
                      user))
               (is (= (metadata-job :job/environment)
-                     environment)))))))))
+                     environment))))))))
+
+  (deftest test-scheduling-capacity-constrained-job-distributor
+    (testutil/setup)
+    (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
+            {compute-cluster-1-name compute-cluster-1
+             compute-cluster-2-name compute-cluster-2
+             compute-cluster-3-name compute-cluster-3})
+    (let [base-job {:job/checkpoint true
+                    :job/instance instances}]
+      (testing "filters-capacity-starved-clusters-and-updates-counter"
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
+              job2 (assoc base-job :job/uuid (UUID/randomUUID))
+              compute-cluster->scheduling-capacity
+              {compute-cluster-1 0
+               compute-cluster-2 0
+               compute-cluster-3 1}]
+          (is (= {compute-cluster-3 [job1]}
+                 (sched/scheduling-capacity-constrained-job-distributor
+                  compute-cluster->scheduling-capacity
+                  [job1 job2]
+                  "test-pool"
+                  [compute-cluster-1
+                   compute-cluster-2
+                   compute-cluster-3]
+                  sched/job->acceptable-compute-clusters))))))))
 
 (deftest test-write-sandbox-url-to-datomic
   (setup)
