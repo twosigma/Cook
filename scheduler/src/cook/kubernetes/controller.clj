@@ -752,6 +752,8 @@
       prom/handle-pod-update-duration {:compute-cluster name}
       (timers/time!
         (metrics/timer "pod-update" name)
+        ; We don't need this and it can get pretty big, so drop it to keep it from leaking into oldgen.
+        (.setSpec new-pod nil)
         (with-process-lock
           compute-cluster
           pod-name
