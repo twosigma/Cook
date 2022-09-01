@@ -57,6 +57,28 @@
 (def generate-sorted-task-scored-task-pairs-duration :cook/scheduler-generate-sorted-task-scored-task-duration-seconds)
 (def get-shares-duration :cook/scheduler-get-shares-duration-seconds)
 (def create-user-to-share-fn-duration :cook/scheduler-create-user-to-share-fn-duration-seconds)
+(def task-failure-reasons :cook/scheduler-task-failures-by-reason)
+(def iterations-at-fenzo-floor :cook/scheduler-iterations-at-fenzo-floor-count)
+(def in-order-queue-count :cook/scheduler-in-order-queue-count)
+(def task-times-by-status :cook/scheduler-task-runtimes-by-status)
+(def number-offers-matched :cook/scheduler-number-offers-matched-distribution)
+(def fraction-unmatched-jobs :cook/scheduler-fraction-unmatched-jobs)
+(def offer-size-by-resource :cook/scheduler-offer-size-by-resource)
+(def task-completion-rate :cook/scheduler-task-completion-rate)
+(def task-completion-rate-by-resource :cook/scheduler-task-completion-rate-by-resource)
+(def transact-report-queue-datoms :cook/scheduler-transact-report-queue-datoms-count)
+(def transact-report-queue-update-job-state :cook/scheduler-transact-report-queue-update-job-state-count)
+(def transact-report-queue-job-complete :cook/scheduler-transact-report-queue-job-complete-count)
+(def transact-report-queue-tasks-killed :cook/scheduler-transact-report-queue-tasks-killed-count)
+(def scheduler-offers-declined :cook/scheduler-offers-declined-count)
+(def scheduler-handle-resource-offer-errors :cook/scheduler-handle-resource-offer-errors-count)
+(def scheduler-matched-resource-counts :cook/scheduler-matched-resource-count)
+(def scheduler-matched-tasks :cook/scheduler-matched-tasks-count)
+(def scheduler-abandon-and-reset :cook/scheduler-abandon-and-reset-count)
+(def scheduler-rank-job-failures :cook/scheduler-rank-job-failures)
+(def scheduler-offer-channel-full-error :cook/scheduler-offer-channel-full-error)
+(def match-jobs-event-duration :cook/scheduler-match-jobs-event-duration-seconds)
+(def in-order-queue-delay-duration :cook/scheduler-in-order-queue-delay-duration-seconds)
 
 ;; Monitor / user resource metrics
 (def user-state-count :cook/scheduler-users-state-count)
@@ -263,6 +285,63 @@
                           {:description "Latency distribution of creating the user-to-share function"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
+      (prometheus/summary task-times-by-status
+                          {:description "Distribution of task runtime by status"
+                           :labels [:status]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary number-offers-matched
+                          {:description "Distribution of number of offers matched"
+                           :labels [:pool :compute-cluster]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary fraction-unmatched-jobs
+                          {:description "Distribution of fraction of unmatched jobs"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary offer-size-by-resource
+                          {:description "Distribution of offer size by resource type"
+                           :labels [:pool :resource]
+                           :quantiles default-summary-quantiles})
+      (prometheus/counter task-completion-rate
+                          {:description "Total count of completed tasks per pool"
+                           :labels [:pool :status]})
+      (prometheus/counter task-completion-rate-by-resource
+                          {:description "Total count of completed resources per pool"
+                           :labels [:pool :status :resource]})
+      (prometheus/counter transact-report-queue-datoms
+                          {:description "Total count of report queue datoms"})
+      (prometheus/counter transact-report-queue-update-job-state
+                          {:description "Total count of job state updates"})
+      (prometheus/counter transact-report-queue-job-complete
+                          {:description "Total count of completed jobs"})
+      (prometheus/counter transact-report-queue-tasks-killed
+                          {:description "Total count of tasks killed"})
+      (prometheus/counter scheduler-offers-declined
+                          {:description "Total offers declined"
+                           :labels [:compute-cluster]})
+      (prometheus/counter scheduler-matched-resource-counts
+                          {:description "Total matched count per resource type"
+                           :labels [:pool :resource]})
+      (prometheus/counter scheduler-matched-tasks
+                          {:description "Total matched tasks"
+                           :labels [:pool :compute-cluster]})
+      (prometheus/counter scheduler-handle-resource-offer-errors
+                          {:descrpiption "Total count of errors encountered in handle-resource-offer!"
+                           :labels [:pool]})
+      (prometheus/counter scheduler-abandon-and-reset
+                          {:descrpiption "Total count of fenzo abandon-and-reset"
+                           :labels [:pool]})
+      (prometheus/counter scheduler-rank-job-failures
+                          {:descrpiption "Total count of rank job failures"})
+      (prometheus/counter scheduler-offer-channel-full-error
+                          {:descrpiption "Total count of offer channel full failures"
+                           :labels [:pool]})
+      (prometheus/summary match-jobs-event-duration
+                          {:description "Latency distribution of matching jobs"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
+      (prometheus/summary in-order-queue-delay-duration
+                          {:description "Latency distribution of processing in-order-queue tasks"
+                           :quantiles default-summary-quantiles})
       ;; Match cycle metrics -------------------------------------------------------------------------------------------
       (prometheus/gauge scheduler-match-cycle-jobs-count
                         {:description "Aggregate match cycle job counts stats"
@@ -280,6 +359,15 @@
       (prometheus/gauge scheduler-match-cycle-all-matched
                         {:description "1 if all jobs were matched, 0 otherwise"
                          :labels [:pool]})
+      (prometheus/summary task-failure-reasons
+                          {:description "Distribution of task failures by reason"
+                           :labels [:reason :resource]
+                           :quantiles default-summary-quantiles})
+      (prometheus/gauge iterations-at-fenzo-floor
+                        {:descriptiion "Current number of iterations at fenzo floor (ie 1 considerable job"
+                         :labels [:pool]})
+      (prometheus/gauge in-order-queue-count
+                        {:description "Depth of queue for in-order processing"})
       ;; Resource usage stats ------------------------------------------------------------------------------------------
       ;; We set these up using a map so we can access them easily by resource type when we set the metric.
       (prometheus/gauge (resource-metric-map :mem)
