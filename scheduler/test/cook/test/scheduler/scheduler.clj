@@ -2670,6 +2670,46 @@
                   [compute-cluster-1
                    compute-cluster-2
                    compute-cluster-3]
+                  sched/job->acceptable-compute-clusters)))))
+      (testing "no-available-capacity"
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
+              compute-cluster->scheduling-capacity
+              {compute-cluster-1 0
+               compute-cluster-2 0
+               compute-cluster-3 0}]
+          (is (= {}
+                 (sched/scheduling-capacity-constrained-job-distributor
+                  compute-cluster->scheduling-capacity
+                  [job1]
+                  "test-pool"
+                  [compute-cluster-1
+                   compute-cluster-2
+                   compute-cluster-3]
+                  sched/job->acceptable-compute-clusters)))))
+      (testing "schedules-with-remaining-capacity"
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
+              job2 (assoc base-job :job/uuid (UUID/randomUUID))
+              compute-cluster->scheduling-capacity
+              {compute-cluster-1 4}]
+          (is (= {compute-cluster-1 [job1 job2]}
+                 (sched/scheduling-capacity-constrained-job-distributor
+                  compute-cluster->scheduling-capacity
+                  [job1 job2]
+                  "test-pool"
+                  [compute-cluster-1]
+                  sched/job->acceptable-compute-clusters)))))
+      (testing "no-compute-clusters"
+        (let [job1 (assoc base-job :job/uuid (UUID/randomUUID))
+              job2 (assoc base-job :job/uuid (UUID/randomUUID))
+              compute-cluster->scheduling-capacity
+              {compute-cluster-1 2
+               compute-cluster-2 2}]
+          (is (= {}
+                 (sched/scheduling-capacity-constrained-job-distributor
+                  compute-cluster->scheduling-capacity
+                  [job1 job2]
+                  "test-pool"
+                  []
                   sched/job->acceptable-compute-clusters))))))))
 
 (deftest test-write-sandbox-url-to-datomic
