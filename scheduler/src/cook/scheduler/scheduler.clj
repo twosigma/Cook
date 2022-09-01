@@ -1692,7 +1692,7 @@
                                                                           :compute-cluster cc-name
                                                                           :number-launched-jobs jobs}))))
 
-(defn distribute-jobs-to-kubernetes
+(defn schedule-jobs-on-kubernetes
   "Distributes considerable jobs across the compute clusters and launches in Kubernetes."
   [conn considerable-jobs pool-name mesos-run-as-user compute-clusters
    compute-cluster->scheduling-capacity job->acceptable-compute-clusters-fn]
@@ -1702,14 +1702,14 @@
       prom/scheduler-distribute-jobs-to-kubernetes-duration {:pool pool-name}
       (timers/time!
        (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
-       (let [distributor-fn (partial scheduling-capacity-constrained-job-distributor 
+       (let [distributor-fn (partial scheduling-capacity-constrained-job-distributor
                                      compute-cluster->scheduling-capacity)
-             kubernetes-jobs-launcher (create-kubernetes-jobs-launcher conn pool-name mesos-run-as-user)]
+             kubernetes-job-launcher-fn (create-kubernetes-jobs-launcher conn pool-name mesos-run-as-user)]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
          (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters
                                      job->acceptable-compute-clusters-fn
                                      distributor-fn
-                                     kubernetes-jobs-launcher)
+                                     kubernetes-job-launcher-fn)
          (log-structured/info "Done launching jobs in Kubernetes" {:pool pool-name}))))))
 
 (defn handle-kubernetes-scheduler-pool
@@ -1756,9 +1756,9 @@
                      considerable-job-uuids pool-name)
               (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
                                     {:pool pool-name})
-              (distribute-jobs-to-kubernetes conn considerable-jobs pool-name mesos-run-as-user
-                                             compute-clusters-for-pool compute-cluster->scheduling-capacity 
-                                             job->acceptable-compute-clusters-fn))
+              (schedule-jobs-on-kubernetes conn considerable-jobs pool-name mesos-run-as-user
+                                           compute-clusters-for-pool compute-cluster->scheduling-capacity
+                                           job->acceptable-compute-clusters-fn))
             (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
         (do
           (log-structured/info "Available scheduling capacity is below threshold, pausing scheduling"
