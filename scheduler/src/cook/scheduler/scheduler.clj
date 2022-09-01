@@ -1118,11 +1118,7 @@
                     acceptable-compute-clusters)]
                (if (empty? available-compute-clusters)
                  :no-acceptable-compute-cluster
-                 (let [assigned-compute-cluster
-                       (nth available-compute-clusters
-                            (-> uuid
-                                hash
-                                (mod (count available-compute-clusters))))]
+                 (let [assigned-compute-cluster (rand-nth available-compute-clusters)]
                    (swap! compute-cluster->available-scheduling-capacity-atom
                           decrement-scheduling-capacity-counter assigned-compute-cluster)
                    assigned-compute-cluster))))
