@@ -319,7 +319,7 @@
                          :labels [:pool :compute-cluster]})
       (prometheus/gauge synthetic-pods-submitted
                         {:description "Count of synthetic pods submitted in the last match cycle"
-                         :labels [:compute-cluster]})
+                         :labels [:compute-cluster :pool]})
       (prometheus/gauge total-nodes
                         {:description "Total current number of nodes per compute cluster"
                          :labels [:compute-cluster]})
@@ -381,11 +381,11 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary autoscale-duration
                           {:description "Latency distribution of autoscaling"
-                           :labels [:compute-cluster]
+                           :labels [:compute-cluster :pool]
                            :quantiles default-summary-quantiles})
       (prometheus/summary launch-synthetic-tasks-duration
                           {:description "Latency distribution of launching synthetic tasks"
-                           :labels [:compute-cluster]
+                           :labels [:compute-cluster :pool]
                            :quantiles default-summary-quantiles})
       (prometheus/counter pods-processed-unforced
                           {:description "Count of processed pods"
