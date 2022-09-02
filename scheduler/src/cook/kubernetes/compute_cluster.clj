@@ -222,12 +222,12 @@
                      (some-> pod .getMetadata .getName))
             shardNum (mod (.hashCode name) (.getShardCount parallel-watch-queue))
             ^Runnable event (fn []
-                              (if (nil? pod)
-                                (try
+                              (try
+                                (if (nil? pod)
                                   (controller/pod-deleted kcc prev-pod)
-                                  (controller/pod-update kcc pod)
-                                  (catch Exception e
-                                    (log/error e "Error processing status update on" name)))))]
+                                  (controller/pod-update kcc pod))
+                                (catch Exception e
+                                  (log/error e "Error processing status update on" name))))]
         (.submitEvent parallel-watch-queue event shardNum))
       (catch Exception e
         (log/error e "Error submitting pod status update")))))
