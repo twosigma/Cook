@@ -1262,7 +1262,7 @@
 (defn fetch-job-map-from-entity
   [db job]
   (prom/with-duration
-    prom/fetch-jobs-duration {}
+    prom/fetch-job-map-duration {}
     (timers/time!
       (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
       (let [resources (util/job-ent->resources job)
@@ -1755,10 +1755,12 @@
             time-range-ms (- end-ms start-ms')
             start (Date. ^long start-ms')
             end (Date. ^long end-ms)
-            job-ents (->> (timers/time!
-                            fetch-jobs
-                            (util/get-jobs-by-user-and-states db user states start end limit
-                                                              name-filter-fn include-custom-executor? pool-name))
+            job-ents (->> (prom/with-duration
+                            prom/fetch-jobs-duration {}
+                            (timers/time!
+                              fetch-jobs
+                              (util/get-jobs-by-user-and-states db user states start end limit
+                                                                name-filter-fn include-custom-executor? pool-name)))
                           (sort-by :job/submit-time)
                           reverse)
             job-ents (if (nil? limit)

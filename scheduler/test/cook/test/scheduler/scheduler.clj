@@ -1225,6 +1225,7 @@
    :state state})
 
 (deftest test-handle-status-update
+  (testutil/setup)
   (with-redefs [completion/plugin completion/no-op]
     (let [uri "datomic:mem://test-handle-status-update"
           conn (restore-fresh-database! uri)

@@ -138,16 +138,21 @@
         completion-cpus (completion-cpus-meter status pool)
         completion-hist-run-times (completion-run-times-histogram status pool)
         completion-MA-run-times (completion-run-times-meter status pool)]
+    (prom/inc prom/task-completion-rate {:pool pool :status (name status)})
     (meters/mark! completion-rate)
+    (prom/inc prom/task-completion-rate-by-resource {:pool pool :status (name status) :resource "memory"} (:mem job-resources))
     (meters/mark!
       completion-mem
       (:mem job-resources))
+    (prom/inc prom/task-completion-rate-by-resource {:pool pool :status (name status) :resource "cpu"} (:cpus job-resources))
     (meters/mark!
       completion-cpus
       (:cpus job-resources))
+    (prom/observe prom/task-times-by-status {:status (name status)} run-time)
     (histograms/update!
       completion-hist-run-times
       run-time)
+    (prom/inc prom/task-completion-rate-by-resource {:pool pool :status (name status) :resource "runtime"} run-time)
     (meters/mark!
       completion-MA-run-times
       run-time)))
@@ -193,6 +198,8 @@
                     :reason/name
                     name)
         update-metrics! (fn update-metrics! [s v]
+                          (prom/observe
+                            prom/task-failure-reasons {:reason reason :resource s} v)
                           (histograms/update!
                             (histograms/histogram
                               ["cook-mesos" "scheduler" "hist-task-fail" reason s])
@@ -389,6 +396,7 @@
           (try
             (log-structured/info "Attempting to kill task from already completed job"
                                  {:compute-cluster compute-cluster-name :task-id task-id})
+            (prom/inc prom/transact-report-queue-tasks-killed)
             (meters/mark! tx-report-queue-tasks-killed)
             (cc/safe-kill-task compute-cluster task-id)
             (catch Exception e
@@ -404,12 +412,14 @@
                                (let [{:keys [tx-data db-after]} tx-report]
                                  (when (< query-basis (d/basis-t db-after))
                                    (let [db (db conn)]
+                                     (prom/inc prom/transact-report-queue-datoms (count tx-data))
                                      (meters/mark! tx-report-queue-datoms (count tx-data))
                                      ;; Monitoring whether a job is completed.
                                      (doseq [{:keys [e a v]} tx-data]
                                        (try
                                          (when (and (= a (d/entid db :job/state))
                                                     (= v (d/entid db :job.state/completed)))
+                                           (prom/inc prom/transact-report-queue-job-complete)
                                            (meters/mark! tx-report-queue-job-complete)
                                            (doseq [[task-entity-id]
                                                    (q '[:find ?i
@@ -424,6 +434,7 @@
                                                (if-let [compute-cluster (cc/compute-cluster-name->ComputeCluster compute-cluster-name)]
                                                  (do (log-structured/info "Attempting to kill task due to job completion"
                                                                           {:compute-cluster compute-cluster-name :task-id task-id})
+                                                     (prom/inc prom/transact-report-queue-tasks-killed)
                                                      (meters/mark! tx-report-queue-tasks-killed)
                                                      @(d/transact conn [[:db/add task-entity-id :instance/reason
                                                                          [:reason/name :reason-killed-by-user]]])
@@ -681,6 +692,7 @@
   "declines a collection of offer ids"
   [compute-cluster offer-ids]
   (log/debug "Declining offers:" offer-ids)
+  (prom/inc prom/scheduler-offers-declined {:compute-cluster compute-cluster} (count offer-ids))
   (meters/mark! scheduler-offer-declined (count offer-ids))
   (try
     (cc/decline-offers compute-cluster offer-ids)
@@ -765,8 +777,12 @@
     (log-structured/debug "Matched jobs" {:pool pool-name :number-matched-jobs (count job-uuids)})
     (when (seq matches)
       (let [matched-normal-jobs-resource-requirements (tools/sum-resources-of-jobs jobs)]
+        (prom/inc prom/scheduler-matched-resource-counts {:pool pool-name :resource "cpu"}
+                  (:cpus matched-normal-jobs-resource-requirements))
         (meters/mark! (meters/meter (metric-title "matched-tasks-cpus" pool-name))
                       (:cpus matched-normal-jobs-resource-requirements))
+        (prom/inc prom/scheduler-matched-resource-counts {:pool pool-name :resource "memory"}
+                  (:mem matched-normal-jobs-resource-requirements))
         (meters/mark! (meters/meter (metric-title "matched-tasks-mem" pool-name))
                       (:mem matched-normal-jobs-resource-requirements))))
     job-uuids))
@@ -928,7 +944,9 @@
                           :number-jobs-per-user (print-str user->num-jobs) ; don't treat the map as json
                           :pool pool-name})
     (meters/mark! scheduler-offer-matched num-offers-matched)
+    (prom/observe prom/number-offers-matched {:pool pool-name :compute-cluster compute-cluster-name} num-offers-matched)
     (histograms/update! number-offers-matched num-offers-matched)
+    (prom/inc prom/scheduler-matched-tasks {:pool pool-name :compute-cluster compute-cluster-name} count-txns)
     (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) count-txns)
     (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name compute-cluster)) count-txns)))
 
@@ -1300,6 +1318,7 @@
     ; This lets us measure how well we're matching on existing resources.
     ; We only measure when there's a minimum number of jobs being considered so that our measurements are less noisy.
     (when (> number-considerable-jobs (:considerable-job-threshold-to-collect-job-match-statistics (config/offer-matching)))
+      (prom/observe prom/fraction-unmatched-jobs {:pool pool-name} fraction-unmatched-jobs)
       (histograms/update! (histograms/histogram (metric-title "fraction-unmatched-jobs" pool-name)) fraction-unmatched-jobs))
     (when (pos? number-considerable-jobs)
       (log-structured/info "Autoscaling variables"
@@ -1497,6 +1516,7 @@
                 @autoscale-future
                 matched-head-or-no-matches?))
           (catch Throwable t
+            (prom/inc prom/scheduler-handle-resource-offer-errors {:pool pool-name})
             (meters/mark! handle-resource-offer!-errors)
             (log-structured/error (print-str "Error in match:" (ex-data t)) {:pool pool-name} t)
             (when-let [offers @offer-stash]
@@ -1530,94 +1550,102 @@
 
 (defn handle-fenzo-pool
   "Handle scheduling pending jobs using the Fenzo Scheduler."
-  [conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache 
-   scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters 
+  [conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache
+   scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
    job->acceptable-compute-clusters-fn user->quota user->usage-future]
   (log-structured/info "Creating handler for Fenzo pool" {:pool pool-name})
-  (timers/time!
-   (timers/timer (metric-title "match-jobs-event" pool-name))
-   (tracing/with-span [s {:name "scheduler.offer-handler.match-jobs" :tags {:pool pool-name :component tracing-component-tag}}]
-     (let [{max-considerable :fenzo-max-jobs-considered scaleback :fenzo-scaleback
-            floor-iterations-before-warn :fenzo-floor-iterations-before-warn 
-            floor-iterations-before-reset :fenzo-floor-iterations-before-reset} scheduler-config
-           num-considerable @fenzo-num-considerable-atom
-           next-considerable
-           (try
-             (let [;; Try to clear the channel
-                   ;; Merge the pending offers from all compute clusters.
-                   offers (tracing/with-span [s {:name "scheduler.offer-handler.generate-offers"
-                                                 :tags {:pool pool-name :component tracing-component-tag}}]
-                            (apply concat (map (fn [compute-cluster]
-                                                 (try
-                                                   (cc/pending-offers compute-cluster pool-name)
-                                                   (catch Throwable t
-                                                     (log-structured/error "Error getting pending offers"
-                                                                           {:pool pool-name
-                                                                            :compute-cluster (cc/compute-cluster-name compute-cluster)}
-                                                                           t)
-                                                     (list))))
-                                               compute-clusters)))
-                   _ (tracing/with-span [s {:name "scheduler.offer-handler.cache-offers-for-rebalancer"
-                                            :tags {:pool pool-name :component tracing-component-tag}}]
-                       (doseq [offer offers
-                               :let [slave-id (-> offer :slave-id :value)]]
-                      ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
-                      ; Computing get-offer-attr-map is pretty expensive because it includes calculating
-                      ; currently running pods, so we have to union the set of pods k8s says are there and
-                      ; the set of pods we're trying to put on the node. Even though it's not used by
-                      ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
-                      ; and only store if it is a new node.
-                         (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
-                           (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
-                   user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
-                                                      :tags {:pool pool-name :component tracing-component-tag}}]
-                                 @user->usage-future)
-                   matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
-                                                          mesos-run-as-user user->usage user->quota
-                                                          num-considerable offers
-                                                          rebalancer-reservation-atom pool-name compute-clusters
-                                                          job->acceptable-compute-clusters-fn)]
-               (when (seq offers)
-                 (reset! resources-atom (view-incubating-offers fenzo)))
-               ;; This check ensures that, although we value Fenzo's optimizations,
-               ;; we also value Cook's sensibility of fairness when deciding which jobs
-               ;; to schedule.  If Fenzo produces a set of matches that doesn't include
-               ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
-               ;; freedom in the form of fewer jobs to consider.
-               (if matched-head?
-                 max-considerable
-                 (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-                   (log-structured/info "Failed to match head, reducing number of considerable jobs"
-                                        {:prev-considerable num-considerable
-                                         :new-considerable new-considerable
-                                         :pool pool-name})
-                   new-considerable)))
-             (catch Exception e
-               (log-structured/error "Offer handler encountered exception; continuing" {:pool pool-name} e)
-               max-considerable))]
+  (prom/with-duration
+    prom/match-jobs-event-duration {:pool pool-name}
+    (timers/time!
+      (timers/timer (metric-title "match-jobs-event" pool-name))
+      (tracing/with-span
+        [s {:name "scheduler.offer-handler.match-jobs" :tags {:pool pool-name :component tracing-component-tag}}]
+        (let [{max-considerable :fenzo-max-jobs-considered scaleback :fenzo-scaleback
+               floor-iterations-before-warn :fenzo-floor-iterations-before-warn
+               floor-iterations-before-reset :fenzo-floor-iterations-before-reset} scheduler-config
+              num-considerable @fenzo-num-considerable-atom
+              next-considerable
+              (try
+                (let [;; Try to clear the channel
+                      ;; Merge the pending offers from all compute clusters.
+                      offers (tracing/with-span [s {:name "scheduler.offer-handler.generate-offers"
+                                                    :tags {:pool pool-name :component tracing-component-tag}}]
+                                                (apply concat (map (fn [compute-cluster]
+                                                                     (try
+                                                                       (cc/pending-offers compute-cluster pool-name)
+                                                                       (catch Throwable t
+                                                                         (log-structured/error "Error getting pending offers"
+                                                                                               {:pool pool-name
+                                                                                                :compute-cluster (cc/compute-cluster-name compute-cluster)}
+                                                                                               t)
+                                                                         (list))))
+                                                                   compute-clusters)))
+                      _ (tracing/with-span [s {:name "scheduler.offer-handler.cache-offers-for-rebalancer"
+                                               :tags {:pool pool-name :component tracing-component-tag}}]
+                                           (doseq [offer offers
+                                                   :let [slave-id (-> offer :slave-id :value)]]
+                                             ; Cache offers for rebalancer so it can use job constraints when doing preemption decisions.
+                                             ; Computing get-offer-attr-map is pretty expensive because it includes calculating
+                                             ; currently running pods, so we have to union the set of pods k8s says are there and
+                                             ; the set of pods we're trying to put on the node. Even though it's not used by
+                                             ; rebalancer (and not needed). So it's OK if it's stale, so we do not need to refresh
+                                             ; and only store if it is a new node.
+                                             (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
+                                               (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
+                      user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
+                                                         :tags {:pool pool-name :component tracing-component-tag}}]
+                                                     @user->usage-future)
+                      matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
+                                                             mesos-run-as-user user->usage user->quota
+                                                             num-considerable offers
+                                                             rebalancer-reservation-atom pool-name compute-clusters
+                                                             job->acceptable-compute-clusters-fn)]
+                  (when (seq offers)
+                    (reset! resources-atom (view-incubating-offers fenzo)))
+                  ;; This check ensures that, although we value Fenzo's optimizations,
+                  ;; we also value Cook's sensibility of fairness when deciding which jobs
+                  ;; to schedule.  If Fenzo produces a set of matches that doesn't include
+                  ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
+                  ;; freedom in the form of fewer jobs to consider.
+                  (if matched-head?
+                    max-considerable
+                    (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
+                      (log-structured/info "Failed to match head, reducing number of considerable jobs"
+                                           {:prev-considerable num-considerable
+                                            :new-considerable new-considerable
+                                            :pool pool-name})
+                      new-considerable)))
+                (catch Exception e
+                  (log-structured/error "Offer handler encountered exception; continuing" {:pool pool-name} e)
+                  max-considerable))]
 
-       (if (= next-considerable 1)
-         (counters/inc! iterations-at-fenzo-floor)
-         (counters/clear! iterations-at-fenzo-floor))
+          (if (= next-considerable 1)
+            (do
+              (prom/inc prom/iterations-at-fenzo-floor {:pool pool-name})
+              (counters/inc! iterations-at-fenzo-floor))
+            (do
+              (prom/set prom/iterations-at-fenzo-floor {:pool pool-name} 0)
+              (counters/clear! iterations-at-fenzo-floor)))
 
-       (when (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
-         (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
-                              {:pool pool-name
-                               :iterations-count (counters/value iterations-at-fenzo-floor)}))
+          (when (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
+            (log-structured/warn (print-str "Offer handler has been showing Fenzo only 1 job for" (counters/value iterations-at-fenzo-floor) "iterations")
+                                 {:pool pool-name
+                                  :iterations-count (counters/value iterations-at-fenzo-floor)}))
 
-       (reset! fenzo-num-considerable-atom
-               (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
-                 (do
-                   (log-structured/error (print-str "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                                                    "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
-                                                    "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                                                    "now give Fenzo" max-considerable "jobs to look at.")
-                                         {:pool pool-name
-                                          :iterations-count (counters/value iterations-at-fenzo-floor)
-                                          :number-max-considerable max-considerable})
-                   (meters/mark! fenzo-abandon-and-reset-meter)
-                   max-considerable)
-                 next-considerable))))))
+          (reset! fenzo-num-considerable-atom
+                  (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
+                    (do
+                      (log-structured/error (print-str "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                                                       "Fenzo has seen only 1 job for" (counters/value iterations-at-fenzo-floor)
+                                                       "iterations, and still hasn't matched it.  Cook is now giving up and will "
+                                                       "now give Fenzo" max-considerable "jobs to look at.")
+                                            {:pool pool-name
+                                             :iterations-count (counters/value iterations-at-fenzo-floor)
+                                             :number-max-considerable max-considerable})
+                      (prom/inc prom/scheduler-abandon-and-reset {:pool pool-name})
+                      (meters/mark! fenzo-abandon-and-reset-meter)
+                      max-considerable)
+                    next-considerable)))))))
 
 (defn job->task-txn
   "Generate task transaction for a job handled by Kubernetes Scheduler."
@@ -2237,6 +2265,7 @@
           jobs)
         (catch Throwable t
           (log/error t "Failed to rank jobs")
+          (prom/inc prom/scheduler-rank-job-failures)
           (meters/mark! rank-jobs-failures)
           {})))))
 
@@ -2309,6 +2338,8 @@
 (defn receive-offers
   [offers-chan match-trigger-chan compute-cluster pool-name offers]
   (doseq [offer offers]
+    (prom/observe prom/offer-size-by-resource {:pool pool-name :resource "cpu"} (get-in offer [:resources :cpus] 0))
+    (prom/observe prom/offer-size-by-resource {:pool pool-name :resource "memory"} (get-in offer [:resources :mem] 0))
     (histograms/update! (histograms/histogram (metric-title "offer-size-cpus" pool-name)) (get-in offer [:resources :cpus] 0))
     (histograms/update! (histograms/histogram (metric-title "offer-size-mem" pool-name)) (get-in offer [:resources :mem] 0)))
   (if (async/offer! offers-chan offers)
@@ -2317,6 +2348,7 @@
       (prom/inc prom/mesos-offer-chan-depth {:pool pool-name})
       (async/offer! match-trigger-chan :trigger)) ; :trigger is arbitrary, the value is ignored
     (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
+        (prom/inc prom/scheduler-offer-channel-full-error {:pool pool-name})
         (meters/mark! offer-chan-full-error)
         (future
           (decline-offers-safe compute-cluster offers)))))
@@ -2335,13 +2367,17 @@
   (defn async-in-order-processing
     "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
     [order-id body-fn]
+    (prom/inc prom/in-order-queue-count)
     (counters/inc! in-order-queue-counter)
     (let [timer-context (timers/start in-order-queue-timer)
+          prom-timer-stop-fn (prom/start-timer prom/in-order-queue-delay-duration)
           processor-agent (->> (mod (hash order-id) parallelism)
                                (nth processor-agents))]
       (send processor-agent safe-call
             #(do
                (timers/stop timer-context)
+               (prom-timer-stop-fn)
+               (prom/dec prom/in-order-queue-count)
                (counters/dec! in-order-queue-counter)
                (body-fn))))))
 

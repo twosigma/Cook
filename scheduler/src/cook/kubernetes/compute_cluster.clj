@@ -587,7 +587,7 @@
           (assert (cc/autoscaling? this pool-name)
                   (str "In " name " compute cluster, request to autoscale despite invalid / missing config"))
           (let [timer-context-autoscale (timers/start (metrics/timer "cc-synthetic-pod-autoscale" name))
-                prom-stop-fn (prom/start-timer prom/autoscale-duration {:compute-cluster name})
+                prom-stop-fn (prom/start-timer prom/autoscale-duration {:compute-cluster name :pool pool-name})
                 outstanding-synthetic-pods (get-outstanding-synthetic-pods this pool-name)
                 num-synthetic-pods (count outstanding-synthetic-pods)
                 total-pods (-> @all-pods-atom keys count)
@@ -685,14 +685,14 @@
                                                     ; Need to pass in resources to task-metadata->pod for gpu count
                                                     :resources pool-specific-resources}}))))
                       num-synthetic-pods-to-launch (count task-metadata-seq)]
-                  (prom/set prom/synthetic-pods-submitted {:compute-cluster name} num-synthetic-pods-to-launch)
+                  (prom/set prom/synthetic-pods-submitted {:compute-cluster name :pool pool-name} num-synthetic-pods-to-launch)
                   (meters/mark! (metrics/meter "cc-synthetic-pod-submit-rate" name) num-synthetic-pods-to-launch)
                   (log-structured/info "Launching synthetic pod(s) in pool"
                                        {:compute-cluster name
                                         :pool synthetic-task-pool-name
                                         :number-synthetic-pods-to-launch num-synthetic-pods-to-launch})
                   (let [timer-context-launch-tasks (timers/start (metrics/timer "cc-synthetic-pod-launch-tasks" name))
-                        prom-stop-fn (prom/start-timer prom/launch-synthetic-tasks-duration {:compute-cluster name})]
+                        prom-stop-fn (prom/start-timer prom/launch-synthetic-tasks-duration {:compute-cluster name :pool pool-name})]
                     (cc/launch-tasks this
                                      synthetic-task-pool-name
                                      [{:task-metadata-seq task-metadata-seq}]
