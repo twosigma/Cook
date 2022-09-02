@@ -1113,12 +1113,12 @@
    counter is decremented."
   [compute-cluster->scheduling-capacity autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
   (tracing/with-span
-    [s {:name "scheduler.distribute-jobs-to-kubernetes-compute-cluster"
+    [s {:name "scheduler.distribute-jobs-for-kubernetes-compute-cluster"
         :tags {:pool pool-name :component tracing-component-tag}}]
     (prom/with-duration
-      prom/scheduler-distribute-jobs-to-kubernetes-duration {:pool pool-name}
+      prom/scheduler-distribute-jobs-for-kubernetes-duration {:pool pool-name}
       (timers/time!
-       (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
+       (timers/timer (metric-title "distribute-jobs-for-kubernetes-duration" pool-name))
        (let [compute-cluster->available-scheduling-capacity-atom (atom compute-cluster->scheduling-capacity)
              compute-cluster->jobs
              (group-by
@@ -1722,15 +1722,16 @@
                                                                           :number-launched-jobs jobs}))))
 
 (defn schedule-jobs-on-kubernetes
-  "Distributes considerable jobs across the compute clusters and launches in Kubernetes."
+  "Schedules jobs by distributing them across the compute clusters
+   and launching then in Kubernetes."
   [conn considerable-jobs pool-name mesos-run-as-user compute-clusters
    compute-cluster->scheduling-capacity job->acceptable-compute-clusters-fn]
   (tracing/with-span
-    [s {:name "scheduler.distribute-jobs-to-kubernetes" :tags {:component tracing-component-tag}}]
+    [s {:name "scheduler.schedule-jobs-on-kubernetes" :tags {:component tracing-component-tag}}]
     (prom/with-duration
-      prom/scheduler-distribute-and-launch-jobs-to-kubernetes-duration {:pool pool-name}
+      prom/scheduler-schedule-jobs-on-kubernetes-duration {:pool pool-name}
       (timers/time!
-       (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
+       (timers/timer (metric-title "schedule-jobs-on-kubernetes-duration" pool-name))
        (let [distributor-fn (partial scheduling-capacity-constrained-job-distributor
                                      compute-cluster->scheduling-capacity)
              kubernetes-job-launcher-fn (create-kubernetes-jobs-launcher conn pool-name mesos-run-as-user)]

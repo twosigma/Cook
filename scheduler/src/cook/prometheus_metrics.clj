@@ -41,8 +41,8 @@
 (def scheduler-launch-all-matched-tasks-transact-duration :cook/scheduler-launch-all-matched-tasks-transact-duration-seconds)
 (def scheduler-launch-all-matched-tasks-submit-duration :cook/scheduler-launch-all-matched-tasks-submit-duration-seconds)
 (def scheduler-trigger-autoscaling-duration :cook/scheduler-trigger-autoscaling-duration-seconds)
-(def scheduler-distribute-and-launch-jobs-to-kubernetes-duration :cook/scheduler-distribute-and-launch-jobs-to-kubernetes-duration-seconds)
-(def scheduler-distribute-jobs-to-kubernetes-duration :cook/scheduler-distribute-jobs-to-kubernetes-duration-seconds)
+(def scheduler-schedule-jobs-on-kubernetes-duration :cook/scheduler-schedule-jobs-on-kubernetes-duration-seconds)
+(def scheduler-distribute-jobs-for-kubernetes-duration :cook/scheduler-distribute-jobs-for-kubernetes-duration-seconds)
 (def scheduler-kill-cancelled-tasks-duration :cook/scheduler-kill-cancelled-tasks-duration-seconds)
 (def scheduler-sort-jobs-hierarchy-duration :cook/scheduler-sort-jobs-hierarchy-duration-seconds)
 (def scheduler-filter-offensive-jobs-duration :cook/scheduler-filter-offensive-jobs-duration-seconds)
@@ -248,12 +248,12 @@
                           {:description "Distribution of trigger autoscaling latency"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
-      (prometheus/summary scheduler-distribute-and-launch-jobs-to-kubernetes-duration
-                          {:description "Distribution of distributing and launching jobs to Kubernetes latency"
+      (prometheus/summary scheduler-schedule-jobs-on-kubernetes-duration
+                          {:description "Distribution of scheduling jobs on Kubernetes latency"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
-      (prometheus/summary scheduler-distribute-jobs-to-kubernetes-duration
-                          {:description "Distribution of distributing jobs to Kubernetes latency"
+      (prometheus/summary scheduler-distribute-jobs-for-kubernetes-duration
+                          {:description "Distribution of distributing jobs for Kubernetes latency"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
       (prometheus/summary scheduler-kill-cancelled-tasks-duration
