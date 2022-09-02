@@ -108,6 +108,7 @@
                                                             org.clojure/clojure io.netty/netty]]
                  [opentracing-clj "0.2.2"]
                  [clj-commons/iapetos "0.1.12"]
+                 [io.prometheus/simpleclient_hotspot "0.16.0"]
 
                  ;;External system integrations
                  [org.clojure/tools.nrepl "0.2.3"]
