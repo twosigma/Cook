@@ -17,7 +17,8 @@
 ;; Declares prometheus metrics for cook scheduler.
 
 (ns cook.prometheus-metrics
-  (:require [iapetos.core :as prometheus]
+  (:require [iapetos.collector.jvm :as jvm]
+            [iapetos.core :as prometheus]
             [iapetos.export :as prometheus-export]
             [mount.core :as mount]))
 
@@ -194,6 +195,8 @@
 (defn create-registry
   []
   (-> (prometheus/collector-registry)
+    ;; Initialize default JVM metrics
+    (jvm/initialize)
     (prometheus/register
       ;; Scheduler metrics ---------------------------------------------------------------------------------------------
       ;; Note that we choose to use a summary instead of a histogram for the latency metrics because we only have
