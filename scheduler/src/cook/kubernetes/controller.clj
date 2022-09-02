@@ -230,15 +230,20 @@
       (handle-pod-submission-failed compute-cluster pod-name failure-reason)
       ; These metrics only measure the happy paths to avoid wide variations from error rates changing.
       ; k8s-response-time-until-waiting helps us characterize watch latency
-      (let [metric-suffix (if (api/synthetic-pod? pod-name) "-synthetic" "")]
+      (let [{{:keys [^V1Pod pod]} :launch-pod} cook-expected-state-dict
+            metric-suffix (if (api/synthetic-pod? pod-name) "-synthetic" "")]
         (merge {:waiting-metric-timer
                 (timers/start (metrics/timer (str "k8s-response-time-until-waiting" metric-suffix) name))
                 :waiting-metric-timer-prom-stop-fn
-                (prom/start-timer prom/pod-waiting-duration {:compute-cluster name :synthetic (str (api/synthetic-pod? pod-name))})
+                (prom/start-timer prom/pod-waiting-duration {:compute-cluster name
+                                                             :synthetic (str (api/synthetic-pod? pod-name))
+                                                             :kubernetes-scheduler-pod (str (api/kubernetes-scheduler-pod? pod))})
                 :running-metric-timer
                 (timers/start (metrics/timer (str "k8s-response-time-until-running" metric-suffix) name))
                 :running-metric-timer-prom-stop-fn
-                (prom/start-timer prom/pod-running-duration {:compute-cluster name :synthetic (str (api/synthetic-pod? pod-name))})}
+                (prom/start-timer prom/pod-running-duration {:compute-cluster name
+                                                             :synthetic (str (api/synthetic-pod? pod-name))
+                                                             :kubernetes-scheduler-pod (str (api/kubernetes-scheduler-pod? pod))})}
                cook-expected-state-dict)))))
 
 (defn update-or-delete!

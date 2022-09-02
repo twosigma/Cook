@@ -41,6 +41,7 @@
 (def scheduler-launch-all-matched-tasks-transact-duration :cook/scheduler-launch-all-matched-tasks-transact-duration-seconds)
 (def scheduler-launch-all-matched-tasks-submit-duration :cook/scheduler-launch-all-matched-tasks-submit-duration-seconds)
 (def scheduler-trigger-autoscaling-duration :cook/scheduler-trigger-autoscaling-duration-seconds)
+(def scheduler-distribute-and-launch-jobs-to-kubernetes-duration :cook/scheduler-distribute-and-launch-jobs-to-kubernetes-duration-seconds)
 (def scheduler-distribute-jobs-to-kubernetes-duration :cook/scheduler-distribute-jobs-to-kubernetes-duration-seconds)
 (def scheduler-kill-cancelled-tasks-duration :cook/scheduler-kill-cancelled-tasks-duration-seconds)
 (def scheduler-sort-jobs-hierarchy-duration :cook/scheduler-sort-jobs-hierarchy-duration-seconds)
@@ -77,6 +78,7 @@
 (def scheduler-abandon-and-reset :cook/scheduler-abandon-and-reset-count)
 (def scheduler-rank-job-failures :cook/scheduler-rank-job-failures)
 (def scheduler-offer-channel-full-error :cook/scheduler-offer-channel-full-error)
+(def scheduler-schedule-jobs-event-duration :cook/scheduler-schedule-jobs-event-duration-seconds)
 (def match-jobs-event-duration :cook/scheduler-match-jobs-event-duration-seconds)
 (def in-order-queue-delay-duration :cook/scheduler-in-order-queue-delay-duration-seconds)
 
@@ -246,6 +248,10 @@
                           {:description "Distribution of trigger autoscaling latency"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
+      (prometheus/summary scheduler-distribute-and-launch-jobs-to-kubernetes-duration
+                          {:description "Distribution of distributing and launching jobs to Kubernetes latency"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
       (prometheus/summary scheduler-distribute-jobs-to-kubernetes-duration
                           {:description "Distribution of distributing jobs to Kubernetes latency"
                            :labels [:pool]
@@ -335,6 +341,10 @@
       (prometheus/counter scheduler-offer-channel-full-error
                           {:descrpiption "Total count of offer channel full failures"
                            :labels [:pool]})
+      (prometheus/summary scheduler-schedule-jobs-event-duration
+                          {:description "Latency distribution of scheduling jobs in Kubernetes"
+                           :labels [:pool]
+                           :quantiles default-summary-quantiles})
       (prometheus/summary match-jobs-event-duration
                           {:description "Latency distribution of matching jobs"
                            :labels [:pool]
