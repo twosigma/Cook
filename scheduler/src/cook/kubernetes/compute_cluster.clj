@@ -218,8 +218,8 @@
   (fn pod-watch-callback
     [_ ^V1Pod prev-pod ^V1Pod pod]
     (try
-      (let [name (or (.. prev-pod .getMetadata .getName)
-                     (.. pod .getMetadata .getName))
+      (let [name (or (some-> prev-pod .getMetadata .getName)
+                     (some-> pod .getMetadata .getName))
             shardNum (mod (.hashCode name) (.getShardCount parallel-watch-queue))
             ^Runnable event (fn []
                               (if (nil? pod)
