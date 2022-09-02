@@ -378,6 +378,25 @@
      (prom/set prom/total-synthetic-pods {:pool pool-name :compute-cluster name} num-synthetic-pods)
      (prom/set prom/max-synthetic-pods {:pool pool-name :compute-cluster name} max-pods-outstanding))))
 
+(defn get-scheduling-pods
+  "Get the pods that are still being scheduled by Kubernetes. This is 
+   done by filtering pods not yet bound to a node from the set of 
+   pods Cook thinks is running.
+
+   This is particularly useful when utilizing the Kubernetes Scheduler
+   to bin pack jobs. Pressure inside the scheduler is measured and then
+   reduced by only having so many outstanding, unscheduled pods at any 
+   given time.
+
+   Filtering for node assignments is the best approximation of this 
+   pressure. Depending on pods with 'Pending' status is problematic. 
+   It includes time spent pulling images onto nodes, after they have 
+   been assigned by the scheduler. This status does not accurately 
+   reflect the pressure inside the Kubernetes Scheduler."
+  [compute-cluster pool-name]
+  (->> (get-pods-in-pool compute-cluster pool-name)
+       (add-starting-pods compute-cluster)
+       (remove api/pod->node-name)))
 
 (defrecord KubernetesComputeCluster [^ApiClient api-client name entity-id exit-code-syncer-state
                                      all-pods-atom current-nodes-atom pool->node-name->node
@@ -522,6 +541,41 @@
   (autoscaling? [_ pool-name]
     (and (-> synthetic-pods-config :pools (contains? pool-name))
          (= @state-atom :running)))
+  
+  (max-launchable
+   [this pool-name]
+   (let [scheduling-pods (get-scheduling-pods this pool-name)
+         num-scheduling-pods (count scheduling-pods)
+         total-pods (-> @all-pods-atom keys count)
+         total-nodes (-> @current-nodes-atom keys count)
+         ; NOTE: the synthetic pods config is co-opted here to determine the max outstanding
+         ; pods in the compute cluster. This configuration, set on the compute cluster
+         ; template, will be refactored in the future to more generally define autoscaling 
+         ; parameters once synthetic pods are decommissioned.
+         {:keys [max-pods-outstanding max-total-pods max-total-nodes]} synthetic-pods-config]
+
+     (when (>= total-pods max-total-pods)
+       (log-structured/warn "Total pods are maxed out"
+                            {:compute-cluster name
+                             :number-max-total-pods max-total-pods
+                             :number-total-pods total-pods
+                             :pool-name pool-name}))
+     (when (>= total-nodes max-total-nodes)
+       (log-structured/warn "Nodes are maxed out"
+                            {:compute-cluster name
+                             :number-max-total-nodes max-total-nodes
+                             :number-total-nodes total-nodes
+                             :pool-name pool-name}))
+     (when (>= num-scheduling-pods max-pods-outstanding)
+       (log-structured/warn "Outstanding pods are maxed out"
+                            {:compute-cluster name
+                             :number-max-synthetic-pods max-pods-outstanding
+                             :number-outstanding-pods num-scheduling-pods
+                             :pool-name pool-name}))
+
+     (min (- max-pods-outstanding num-scheduling-pods)
+          (- max-total-nodes total-nodes)
+          (- max-total-pods total-pods))))
 
   (autoscale! [this pool-name jobs adjust-job-resources-for-pool-fn]
     (tracing/with-span [s {:name "k8s.autoscale" :tags {:compute-cluster name :pool pool-name :component tracing-component-tag}}]
@@ -803,10 +857,12 @@
   [compute-cluster-name synthetic-pods-config]
   (when synthetic-pods-config
     (when-not (and
-                (-> synthetic-pods-config :image count pos?)
-                (-> synthetic-pods-config :max-pods-outstanding pos?)
-                (-> synthetic-pods-config :pools set?)
-                (-> synthetic-pods-config :pools count pos?))
+               (-> synthetic-pods-config :image count pos?)
+               (-> synthetic-pods-config :max-pods-outstanding pos?)
+               (-> synthetic-pods-config :max-total-pods pos?)
+               (-> synthetic-pods-config :max-total-nodes pos?)
+               (-> synthetic-pods-config :pools set?)
+               (-> synthetic-pods-config :pools count pos?))
       (throw (ex-info (str "In " compute-cluster-name " compute cluster, invalid synthetic pods config")
                       synthetic-pods-config)))))
 

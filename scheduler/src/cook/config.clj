@@ -115,7 +115,9 @@
                                      :fenzo-floor-iterations-before-warn 10
                                      :fenzo-floor-iterations-before-reset 1000})
 (def default-kubernetes-scheduler-config {:scheduler "kubernetes"
-                                          :max-jobs-considered 1000})
+                                          :max-jobs-considered 500
+                                          :minimum-scheduling-capacity-threshold 50
+                                          :scheduling-pause-time-ms 3000})
 (def default-schedulers-config [{:pool-regex ".*"
                                  :scheduler-config default-fenzo-scheduler-config}])
 

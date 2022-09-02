@@ -1084,19 +1084,67 @@
                               :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
       (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
 
+(defn decrement-scheduling-capacity-counter
+  "Decrement the available scheduling capacity for the compute cluster."
+  [compute-cluster->available-scheduling-capacity compute-cluster]
+  (update-in compute-cluster->available-scheduling-capacity [compute-cluster] dec))
+
+(defn scheduling-capacity-constrained-job-distributor
+  "Create a job distributor function that only assigns jobs to compute clusters
+   with available scheduling capacity. Assignments are tracked and the given
+   counter is decremented."
+  [compute-cluster->scheduling-capacity autoscalable-jobs pool-name compute-clusters job->acceptable-compute-clusters-fn]
+  (tracing/with-span [s {:name "scheduler.distribute-jobs-to-compute-cluster"
+                         :tags {:pool pool-name :component tracing-component-tag}}]
+    (let [compute-cluster->available-scheduling-capacity-atom (atom compute-cluster->scheduling-capacity)
+          compute-cluster->jobs
+          (group-by
+           (fn choose-compute-cluster-for-autoscaling
+             [{:keys [job/uuid] :as job}]
+             (let [acceptable-compute-clusters
+                   (job->acceptable-compute-clusters-fn job compute-clusters)
+                   available-compute-clusters
+                   (filter
+                    (fn [compute-cluster]
+                      (let [capacity (get @compute-cluster->available-scheduling-capacity-atom
+                                          compute-cluster)]
+                        (if (some? capacity)
+                          (pos? capacity)
+                          (do
+                            (log-structured/error
+                             "Not tracking available scheduling capacity of compute cluster considered in distributor"
+                             {:pool-name pool-name :compute-cluster compute-cluster})
+                            false))))
+                    acceptable-compute-clusters)]
+               (if (empty? available-compute-clusters)
+                 :no-acceptable-compute-cluster
+                 (let [assigned-compute-cluster (rand-nth available-compute-clusters)]
+                   (swap! compute-cluster->available-scheduling-capacity-atom
+                          decrement-scheduling-capacity-counter assigned-compute-cluster)
+                   assigned-compute-cluster))))
+           autoscalable-jobs)]
+      (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
+        (log-structured/info "There are jobs with no acceptable compute cluster for launching"
+                             {:pool pool-name
+                              :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
+      (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))
+
 (defn distribute-and-launch-jobs
   "Assign each job to a compute cluster (using configuration such as pool name and cluster
    capability) and launch them in parallel.
 
+   A function `distributor-fn` is used to do the distribution. This is needed to implement
+   enforcement of scheduling capacity constraints when distributing jobs for the Kubernetes
+   Scheduler.
+
    A function `launch-distributed-job-fn` is used to actually do the launching. This is 
    needed to implement the different launch logic for launching synthetic pods for 
-   autoscaling or for using the Kubernetes Scheduler directly."
-  [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn launch-distributed-job-fn]
+   autoscaling or for using the Kubernetes Scheduler directly for real job pods."
+  [jobs pool-name compute-clusters job->acceptable-compute-clusters-fn distributor-fn launch-distributed-job-fn]
   (try
     (when (seq jobs)
       (log-structured/info "Preparing for job distribution" {:pool pool-name})
-      (let [compute-cluster->jobs (distribute-jobs-to-compute-clusters jobs pool-name compute-clusters
-                                                                       job->acceptable-compute-clusters-fn)]
+      (let [compute-cluster->jobs (distributor-fn jobs pool-name compute-clusters job->acceptable-compute-clusters-fn)]
         (log-structured/info "Starting job distribution" {:pool pool-name})
         (->> compute-cluster->jobs
              (map #(future (launch-distributed-job-fn %)))
@@ -1125,7 +1173,9 @@
 
          (if (and (pos? num-autoscaling-compute-clusters) (seq pending-jobs-for-autoscaling))
            (distribute-and-launch-jobs pending-jobs-for-autoscaling pool-name autoscaling-compute-clusters
-                                       job->acceptable-compute-clusters-fn launch-distributed-job-fn)
+                                       job->acceptable-compute-clusters-fn 
+                                       distribute-jobs-to-compute-clusters 
+                                       launch-distributed-job-fn)
            ; Update the synthetic pod counters even if we're not autoscaling, so we have accurate metrics 
            (doseq [compute-cluster autoscaling-compute-clusters]
              (cc/set-synthetic-pods-counters compute-cluster pool-name))))))))
@@ -1624,56 +1674,96 @@
                          ; Need to pass in resources to task-metadata->pod for gpu count
                          :resources pool-specific-resources}})))))
 
-(defn distribute-jobs-to-kubernetes
+(defn create-kubernetes-jobs-launcher
+  "Create a function that will launch given jobs in a given compute cluster for
+   handling by the Kubernetes Scheduler."
+  [conn pool-name mesos-run-as-user]
+  (fn [[compute-cluster jobs]]
+    (let [cc-name (cc/compute-cluster-name compute-cluster) 
+          task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
+          psuedo-matches [{:task-metadata-seq task-metadata-seq}]
+          task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
+      (launch-tasks-for-cluster compute-cluster psuedo-matches task-txns pool-name conn nil false)
+      (log-structured/info "Launched jobs in Kubernetes compute cluster" {:pool pool-name
+                                                                          :compute-cluster cc-name
+                                                                          :number-launched-jobs jobs}))))
+
+(defn schedule-jobs-on-kubernetes
   "Distributes considerable jobs across the compute clusters and launches in Kubernetes."
-  [conn considerable-jobs pool-name compute-clusters mesos-run-as-user job->acceptable-compute-clusters-fn]
+  [conn considerable-jobs pool-name mesos-run-as-user compute-clusters
+   compute-cluster->scheduling-capacity job->acceptable-compute-clusters-fn]
   (tracing/with-span
     [s {:name "scheduler.distribute-jobs-to-kubernetes" :tags {:component tracing-component-tag}}]
     (prom/with-duration
       prom/scheduler-distribute-jobs-to-kubernetes-duration {:pool pool-name}
       (timers/time!
        (timers/timer (metric-title "distribute-jobs-to-kubernetes-duration" pool-name))
-       (let [; NOTE: this is required to properly filter compute clusters to
-             ; those configured for this pool. This is done via the synthetic-pods
-             ; config, accessed via the autoscaling? method. In the future, this list
-             ; of pools should be slightly restructured to be listed one level higher,
-             ; on the compute-cluster-template config.
-             compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
-             launch-distributed-job-fn
-             (fn [[compute-cluster jobs]]
-               (let [task-metadata-seq (jobs->kubernetes-task-metadata jobs pool-name mesos-run-as-user compute-cluster)
-                     psuedo-matches [{:task-metadata-seq task-metadata-seq}]
-                     task-txns (map (fn [job metadata] (job->task-txn job metadata compute-cluster)) jobs task-metadata-seq)]
-                 (launch-tasks-for-cluster compute-cluster psuedo-matches task-txns pool-name conn nil false)))]
+       (let [distributor-fn (partial scheduling-capacity-constrained-job-distributor
+                                     compute-cluster->scheduling-capacity)
+             kubernetes-job-launcher-fn (create-kubernetes-jobs-launcher conn pool-name mesos-run-as-user)]
          (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
-         (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters-for-pool
-                                     job->acceptable-compute-clusters-fn launch-distributed-job-fn)
-         (log-structured/info "Launched jobs in Kubernetes" {:pool pool-name :number-launched-jobs (count considerable-jobs)}))))))
+         (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters
+                                     job->acceptable-compute-clusters-fn
+                                     distributor-fn
+                                     kubernetes-job-launcher-fn)
+         (log-structured/info "Done launching jobs in Kubernetes" {:pool pool-name}))))))
 
 (defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs using the Kubernetes Scheduler."
-  [conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
-   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
+  [conn pool-name->pending-jobs-atom pool-name 
+   {:keys [max-jobs-considered minimum-scheduling-capacity-threshold scheduling-pause-time-ms]} 
+   compute-clusters job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
   (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
   (try
-    (let [user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
-                                             :tags {:pool pool-name :component tracing-component-tag}}]
-                        @user->usage-future)
-          {max-considerable :max-jobs-considered} scheduler-config
-          db (db conn)
-          pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-          considerable-jobs (pending-jobs->considerable-jobs db pending-jobs user->quota user->usage max-considerable pool-name)
-          considerable-job-uuids (set (map :job/uuid considerable-jobs))]
-      (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count considerable-job-uuids)})
-      (if (seq considerable-jobs)
+    (let [; This is required to properly filter compute clusters to
+          ; those configured for this pool. This is done via the synthetic-pods
+          ; config, accessed via the autoscaling? method. In the future, this list
+          ; of pools should be slightly restructured to be listed one level higher,
+          ; on the compute-cluster-template config.
+          compute-clusters-for-pool (filter #(cc/autoscaling? % pool-name) compute-clusters)
+          compute-cluster->scheduling-capacity (pc/map-from-keys #(cc/max-launchable % pool-name) compute-clusters-for-pool)
+          available-scheduling-capacity (reduce + (vals compute-cluster->scheduling-capacity))
+          ; We can avoid some expensive calculations (e.g. quotas) for jobs
+          ; that ultimately will not be scheduled this cycle, if we clamp
+          ; max considerable to the current available scheduling capacity.
+          max-considerable (min max-jobs-considered available-scheduling-capacity)]
+      (log-structured/info "Cycle available scheduling capacity"
+                           {:available-scheduling-capacity available-scheduling-capacity 
+                            :max-considerable max-considerable :pool pool-name})
+      
+      ; A minimum threshold prevents incurring cycle overhead for a small number
+      ; of jobs that could be scheduled this cycle, due to low available scheduling capacity.
+      (if (> available-scheduling-capacity minimum-scheduling-capacity-threshold)
+        (let [db (db conn)
+              pending-jobs (get @pool-name->pending-jobs-atom pool-name)
+              user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
+                                                 :tags {:pool pool-name :component tracing-component-tag}}]
+                            @user->usage-future)
+              considerable-jobs (pending-jobs->considerable-jobs db pending-jobs user->quota user->usage max-considerable pool-name)
+              considerable-job-uuids (set (map :job/uuid considerable-jobs))]
+          (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count considerable-job-uuids)
+                                                   :number-pending-jobs (count pending-jobs)})
+          (if (seq considerable-jobs)
+            (do
+              ; Remove the considerable jobs from consideration from matching,
+              ; until we do a rank cycle again.
+              (swap! pool-name->pending-jobs-atom
+                     remove-matched-jobs-from-pending-jobs
+                     considerable-job-uuids pool-name)
+              (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
+                                    {:pool pool-name})
+              (schedule-jobs-on-kubernetes conn considerable-jobs pool-name mesos-run-as-user
+                                           compute-clusters-for-pool compute-cluster->scheduling-capacity
+                                           job->acceptable-compute-clusters-fn))
+            (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
         (do
-          (swap! pool-name->pending-jobs-atom
-                 remove-matched-jobs-from-pending-jobs
-                 considerable-job-uuids pool-name)
-          (log-structured/debug (print-str "Updated pool-name->pending-jobs-atom:" (get @pool-name->pending-jobs-atom pool-name))
-                                {:pool pool-name})
-          (distribute-jobs-to-kubernetes conn considerable-jobs pool-name compute-clusters mesos-run-as-user job->acceptable-compute-clusters-fn))
-        (log-structured/info "No considerable jobs launched this cycle" {:pool pool-name})))
+          (log-structured/info "Available scheduling capacity is below threshold, pausing scheduling"
+                               {:available-scheduling-capacity available-scheduling-capacity
+                                :minimum-scheduling-capacity-threshold minimum-scheduling-capacity-threshold
+                                :max-jobs-considered max-jobs-considered
+                                :scheduling-pause-time-ms scheduling-pause-time-ms
+                                :pool pool-name})
+          (Thread/sleep scheduling-pause-time-ms))))
     (catch Exception e
       (log-structured/error "Kubernetes handler encountered exception; continuing" {:pool pool-name} e))))
 

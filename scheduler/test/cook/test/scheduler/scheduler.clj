@@ -2645,7 +2645,44 @@
               (is (= (metadata-job :job/user)
                      user))
               (is (= (metadata-job :job/environment)
-                     environment)))))))))
+                     environment))))))))
+
+  (defn scheduling-capacity-constrained-job-distributor-helper
+    "Helper function for testing scheduling-capacity-constrained-job-distributor."
+    [compute-cluster->scheduling-capacity jobs]
+    (sched/scheduling-capacity-constrained-job-distributor
+     compute-cluster->scheduling-capacity
+     jobs
+     "test-pool"
+     (keys compute-cluster->scheduling-capacity)
+     sched/job->acceptable-compute-clusters))
+  
+  (deftest test-scheduling-capacity-constrained-job-distributor
+    (testutil/setup)
+    (reset! cook.compute-cluster/cluster-name->compute-cluster-atom
+            {compute-cluster-1-name compute-cluster-1
+             compute-cluster-2-name compute-cluster-2
+             compute-cluster-3-name compute-cluster-3})
+    (let [base-job {:job/checkpoint true
+                    :job/instance instances}
+          job1 (assoc base-job :job/uuid (UUID/randomUUID))
+          job2 (assoc base-job :job/uuid (UUID/randomUUID))]
+      (testing "filters-capacity-starved-clusters-and-updates-counter"
+        (is (= {compute-cluster-3 [job1]}
+               (scheduling-capacity-constrained-job-distributor-helper
+                {compute-cluster-1 0 compute-cluster-2 0 compute-cluster-3 1} [job1 job2]))))
+      (testing "no-available-capacity"
+        (is (= {}
+               (scheduling-capacity-constrained-job-distributor-helper
+                {compute-cluster-1 0 compute-cluster-2 0 compute-cluster-3 0} [job1]))))
+      (testing "schedules-with-remaining-capacity"
+        (is (= 2
+               (count (flatten (vals (scheduling-capacity-constrained-job-distributor-helper
+                                      {compute-cluster-1 2 compute-cluster-2 2} [job1 job2])))))))
+      (testing "no-compute-clusters"
+        (is (= {}
+               (scheduling-capacity-constrained-job-distributor-helper
+                {} [job1 job2])))))))
 
 (deftest test-write-sandbox-url-to-datomic
   (setup)
