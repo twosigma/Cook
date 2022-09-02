@@ -220,6 +220,14 @@
         ((wrap-rate-limit h {:storage rate-limit-storage :limit user-limit-for-metrics}) req)
         ((wrap-rate-limit h {:storage rate-limit-storage :limit default-user-limit}) req)))))
 
+(defn prometheus-path-fn
+  "By default, the path will be the entire URI, but since we have UUID-based URI paths, we need to truncate them."
+  [{:keys [uri]}]
+  (clojure.string/replace
+            uri
+            #"[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}"
+            "UUID"))
+
 (defn- consume-request-stream [handler]
   (fn [{:keys [body] :as request}]
     (let [resp (handler request)]
@@ -259,6 +267,7 @@
                                  (cond-> {:ring-handler (routes
                                                           (route/resources "/resource")
                                                           (-> view
+                                                            (cook.prometheus-metrics/wrap-ring-instrumentation {:path-fn prometheus-path-fn})
                                                             (conditional-rate-limit rate-limit-storage user-limit
                                                                                     user-limit-for-metrics)
                                                             tell-jetty-about-usename
