@@ -1723,7 +1723,7 @@
 
 (defn schedule-jobs-on-kubernetes
   "Schedules jobs by distributing them across the compute clusters
-   and launching then in Kubernetes."
+   and launching them in Kubernetes."
   [conn considerable-jobs pool-name mesos-run-as-user compute-clusters
    compute-cluster->scheduling-capacity job->acceptable-compute-clusters-fn]
   (tracing/with-span
