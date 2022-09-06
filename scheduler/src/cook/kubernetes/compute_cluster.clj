@@ -839,6 +839,8 @@
            name
            namespace
            node-blocklist-labels
+           parallel-watch-max-outstanding
+           parallel-watch-shards
            read-timeout-seconds
            scan-frequency-seconds
            state
@@ -859,6 +861,8 @@
          state :running
          state-locked? false
          use-google-service-account? true
+         parallel-watch-max-outstanding 1000
+         parallel-watch-shards 200
          cook-pool-taint-prefix ""
          cook-pool-label-prefix ""
          use-token-refreshing-authenticator? false}
@@ -917,6 +921,6 @@
                                                                {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")})
                                                     ; cluster-level kill-lock. See cc/kill-lock-object
                                                     (ReentrantReadWriteLock. true)
-                                                    (ParallelWatchQueue. controller-executor-service 1000 100))]
+                                                    (ParallelWatchQueue. controller-executor-service parallel-watch-max-outstanding parallel-watch-shards))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
