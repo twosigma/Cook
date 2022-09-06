@@ -1117,40 +1117,38 @@
         :tags {:pool pool-name :component tracing-component-tag}}]
     (prom/with-duration
       prom/scheduler-distribute-jobs-for-kubernetes-duration {:pool pool-name}
-      (timers/time!
-       (timers/timer (metric-title "distribute-jobs-for-kubernetes-duration" pool-name))
-       (let [compute-cluster->available-scheduling-capacity-atom (atom compute-cluster->scheduling-capacity)
-             compute-cluster->jobs
-             (group-by
-              (fn choose-compute-cluster-for-autoscaling
-                [{:keys [job/uuid] :as job}]
-                (let [acceptable-compute-clusters
-                      (job->acceptable-compute-clusters-fn job compute-clusters)
-                      available-compute-clusters
-                      (filter
-                       (fn [compute-cluster]
-                         (let [capacity (get @compute-cluster->available-scheduling-capacity-atom
-                                             compute-cluster)]
-                           (if (some? capacity)
-                             (pos? capacity)
-                             (do
-                               (log-structured/error
-                                "Not tracking available scheduling capacity of compute cluster considered in distributor"
-                                {:pool-name pool-name :compute-cluster compute-cluster})
-                               false))))
-                       acceptable-compute-clusters)]
-                  (if (empty? available-compute-clusters)
-                    :no-acceptable-compute-cluster
-                    (let [assigned-compute-cluster (rand-nth available-compute-clusters)]
-                      (swap! compute-cluster->available-scheduling-capacity-atom
-                             decrement-scheduling-capacity-counter assigned-compute-cluster)
-                      assigned-compute-cluster))))
-              autoscalable-jobs)]
-         (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
-           (log-structured/info "There are jobs with no acceptable compute cluster for launching"
-                                {:pool pool-name
-                                 :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
-         (dissoc compute-cluster->jobs :no-acceptable-compute-cluster))))))
+      (let [compute-cluster->available-scheduling-capacity-atom (atom compute-cluster->scheduling-capacity)
+            compute-cluster->jobs
+            (group-by
+             (fn choose-compute-cluster-for-autoscaling
+               [{:keys [job/uuid] :as job}]
+               (let [acceptable-compute-clusters
+                     (job->acceptable-compute-clusters-fn job compute-clusters)
+                     available-compute-clusters
+                     (filter
+                      (fn [compute-cluster]
+                        (let [capacity (get @compute-cluster->available-scheduling-capacity-atom
+                                            compute-cluster)]
+                          (if (some? capacity)
+                            (pos? capacity)
+                            (do
+                              (log-structured/error
+                               "Not tracking available scheduling capacity of compute cluster considered in distributor"
+                               {:pool-name pool-name :compute-cluster compute-cluster})
+                              false))))
+                      acceptable-compute-clusters)]
+                 (if (empty? available-compute-clusters)
+                   :no-acceptable-compute-cluster
+                   (let [assigned-compute-cluster (rand-nth available-compute-clusters)]
+                     (swap! compute-cluster->available-scheduling-capacity-atom
+                            decrement-scheduling-capacity-counter assigned-compute-cluster)
+                     assigned-compute-cluster))))
+             autoscalable-jobs)]
+        (when-let [jobs (:no-acceptable-compute-cluster compute-cluster->jobs)]
+          (log-structured/info "There are jobs with no acceptable compute cluster for launching"
+                               {:pool pool-name
+                                :first-ten-jobs (print-str (->> jobs (take 10) (map :job/uuid) (map str)))}))
+        (dissoc compute-cluster->jobs :no-acceptable-compute-cluster)))))
 
 (defn distribute-and-launch-jobs
   "Assign each job to a compute cluster (using configuration such as pool name and cluster
@@ -1730,17 +1728,15 @@
     [s {:name "scheduler.schedule-jobs-on-kubernetes" :tags {:component tracing-component-tag}}]
     (prom/with-duration
       prom/scheduler-schedule-jobs-on-kubernetes-duration {:pool pool-name}
-      (timers/time!
-       (timers/timer (metric-title "schedule-jobs-on-kubernetes-duration" pool-name))
-       (let [distributor-fn (partial scheduling-capacity-constrained-job-distributor
-                                     compute-cluster->scheduling-capacity)
-             kubernetes-job-launcher-fn (create-kubernetes-jobs-launcher conn pool-name mesos-run-as-user)]
-         (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
-         (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters
-                                     job->acceptable-compute-clusters-fn
-                                     distributor-fn
-                                     kubernetes-job-launcher-fn)
-         (log-structured/info "Done launching jobs in Kubernetes" {:pool pool-name}))))))
+      (let [distributor-fn (partial scheduling-capacity-constrained-job-distributor
+                                    compute-cluster->scheduling-capacity)
+            kubernetes-job-launcher-fn (create-kubernetes-jobs-launcher conn pool-name mesos-run-as-user)]
+        (log-structured/info "Launching jobs in Kubernetes" {:pool pool-name})
+        (distribute-and-launch-jobs considerable-jobs pool-name compute-clusters
+                                    job->acceptable-compute-clusters-fn
+                                    distributor-fn
+                                    kubernetes-job-launcher-fn)
+        (log-structured/info "Done launching jobs in Kubernetes" {:pool pool-name})))))
 
 (defn handle-kubernetes-scheduler-pool
   "Handle scheduling pending jobs using the Kubernetes Scheduler."

@@ -342,11 +342,11 @@
                           {:descrpiption "Total count of offer channel full failures"
                            :labels [:pool]})
       (prometheus/summary scheduler-schedule-jobs-event-duration
-                          {:description "Latency distribution of scheduling jobs in Kubernetes"
+                          {:description "Latency distribution of scheduling jobs in Kubernetes in the full Kenzo codepath"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
       (prometheus/summary match-jobs-event-duration
-                          {:description "Latency distribution of matching jobs"
+                          {:description "Latency distribution of matching jobs in the full Fenzo codepath"
                            :labels [:pool]
                            :quantiles default-summary-quantiles})
       (prometheus/summary in-order-queue-delay-duration
@@ -374,7 +374,7 @@
                            :labels [:reason :resource]
                            :quantiles default-summary-quantiles})
       (prometheus/gauge iterations-at-fenzo-floor
-                        {:descriptiion "Current number of iterations at fenzo floor (ie 1 considerable job"
+                        {:descriptiion "Current number of iterations at fenzo floor (i.e. 1 considerable job)"
                          :labels [:pool]})
       (prometheus/gauge in-order-queue-count
                         {:description "Depth of queue for in-order processing"})
