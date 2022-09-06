@@ -12,6 +12,7 @@
             [cook.test.testutil :as tu]
             [datomic.api :as d])
   (:import (clojure.lang ExceptionInfo)
+           (com.twosigma.cook.kubernetes ParallelWatchQueue)
            (io.kubernetes.client.openapi.models V1NodeSelectorRequirement V1Pod V1PodSecurityContext)
            (java.util.concurrent Executors)
            (java.util.concurrent.locks ReentrantLock ReentrantReadWriteLock)
@@ -80,7 +81,8 @@
                                                               {} (atom :running) (atom false) false
                                                               cook.rate-limit/AllowAllRateLimiter "t-a" "p-a" "t2-a" "p2-a" "l-p" "l-v1"
                                                               (repeatedly 16 #(ReentrantLock.))
-                                                              (ReentrantReadWriteLock. true))
+                                                              (ReentrantReadWriteLock. true)
+                                                              (ParallelWatchQueue. (Executors/newSingleThreadExecutor) 1000 10))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -103,7 +105,8 @@
                                                               {} (atom :running) (atom false) false
                                                               cook.rate-limit/AllowAllRateLimiter "t-b" "p-b" "t2-a" "p2-a" "l-p" "l-v2"
                                                               (repeatedly 16 #(ReentrantLock.))
-                                                              (ReentrantReadWriteLock. true))
+                                                              (ReentrantReadWriteLock. true)
+                                                              (ParallelWatchQueue. (Executors/newSingleThreadExecutor) 1000 10))
               task-metadata (task/TaskAssignmentResult->task-metadata (d/db conn)
                                                                       nil
                                                                       compute-cluster
@@ -134,7 +137,8 @@
                                                             {} (atom :running) (atom false) false
                                                             cook.rate-limit/AllowAllRateLimiter "t-c" "p-c" "t2-a" "p2-a" "l-p" "l-c2"
                                                             (repeatedly 16 #(ReentrantLock.))
-                                                            (ReentrantReadWriteLock. true))
+                                                            (ReentrantReadWriteLock. true)
+                                                            (ParallelWatchQueue. (Executors/newSingleThreadExecutor) 1000 10))
             node-name->node {"nodeA" (tu/node-helper "nodeA" 1.0 1000.0 10 "nvidia-tesla-p100" nil nil)
                              "nodeB" (tu/node-helper "nodeB" 1.0 1000.0 25 "nvidia-tesla-p100" nil nil)
                              "nodeC" (tu/node-helper "nodeC" 1.0 1000.0 nil nil nil nil)
