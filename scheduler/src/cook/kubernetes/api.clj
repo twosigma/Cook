@@ -162,7 +162,7 @@
   "Given a pod, returns the node name on the pod spec"
   [^V1Pod pod]
   (or (some-> pod .getSpec .getNodeName)
-      (some-> pod .getSpec .getNodeSelector (get k8s-hostname-label))))
+      (some-> pod .getSpec .getNodeSelector (.get k8s-hostname-label))))
 
 (defn cook-pod-callback-wrap
   "A special wrapping function that, given a callback, key, prev-item, and item, will invoke the callback only
