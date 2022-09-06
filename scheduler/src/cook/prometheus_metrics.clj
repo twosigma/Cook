@@ -18,6 +18,7 @@
 
 (ns cook.prometheus-metrics
   (:require [iapetos.collector.jvm :as jvm]
+            [iapetos.collector.ring :as ring]
             [iapetos.core :as prometheus]
             [iapetos.export :as prometheus-export]
             [mount.core :as mount]))
@@ -197,6 +198,8 @@
   (-> (prometheus/collector-registry)
     ;; Initialize default JVM metrics
     (jvm/initialize)
+    ;; Initialize ring metrics
+    (ring/initialize)
     (prometheus/register
       ;; Scheduler metrics ---------------------------------------------------------------------------------------------
       ;; Note that we choose to use a summary instead of a histogram for the latency metrics because we only have
@@ -741,6 +744,11 @@
    `(prometheus/observe registry ~name ~amount))
   ([name labels amount]
    `(prometheus/observe registry ~name ~labels ~amount)))
+
+(defmacro wrap-ring-instrumentation
+  "Wraps the given Ring handler to write metrics to the given registry."
+  [handler options]
+  `(ring/wrap-instrumentation ~handler registry ~options))
 
 (defn export []
   "Returns the current values of all registered metrics in plain text format."
