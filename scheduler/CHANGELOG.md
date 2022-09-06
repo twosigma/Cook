@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.63.0] - 2022-09-06
+### Added
+- Prometheus metrics
+  - JVM metrics, from @samincheva
+  - Ring metrics, from @samincheva
+  - Parity for remaining codahale metrics, from @samincheva
+- Direct-to-Kubernetes scheduler (Kenzo)
+  - Use backpressure of scheduling pods to moderate launching new pods for real
+    jobs, from @ahaysx
+  - Prometheus metrics parity, from @ahaysx
+
+### Changed
+- Parallelize Kubernetes watch processing, from @scrosby
+- Optimize getting the nodename from a node, from @scrosby
+
 ## [1.62.6] - 2022-08-26
 ### Added
 - Initial implementation for submitting jobs directly to Kubernetes Scheduler, from @ahaysx
