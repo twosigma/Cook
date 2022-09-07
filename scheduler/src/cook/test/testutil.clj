@@ -43,7 +43,6 @@
             [ring.middleware.params :refer [wrap-params]])
   (:import (com.google.common.cache CacheBuilder)
            (com.netflix.fenzo SimpleAssignmentResult)
-           (com.twosigma.cook.kubernetes ParallelWatchQueue)
            (io.kubernetes.client.custom Quantity Quantity$Format)
            (io.kubernetes.client.openapi.models V1Container V1Node V1NodeSpec V1NodeStatus V1ObjectMeta V1Pod V1PodSpec V1ResourceRequirements V1Taint)
            (java.util.concurrent Executors TimeUnit)
@@ -662,5 +661,4 @@
                                     "some-random-label-A"
                                     "some-random-label-val-B"
                                     (repeatedly 16 #(ReentrantLock.))
-                                    (ReentrantReadWriteLock. true)
-                                    (ParallelWatchQueue. (Executors/newSingleThreadExecutor) 1000 100))))
+                                    (ReentrantReadWriteLock. true))))
