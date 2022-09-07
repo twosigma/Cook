@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.63.1] - 2022-09-07
+### Changed
+- Reverted parallel Kubernetes watch processing for future release
+
 ## [1.63.0] - 2022-09-06
 ### Added
 - Prometheus metrics
