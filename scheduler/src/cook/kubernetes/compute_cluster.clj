@@ -27,7 +27,7 @@
             [metrics.timers :as timers]
             [opentracing-clj.core :as tracing])
   (:import (com.google.auth.oauth2 GoogleCredentials)
-           (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator ParallelWatchQueue)
+           (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
            (io.kubernetes.client.util ClientBuilder KubeConfig)
@@ -214,23 +214,15 @@
 
 (defn make-cook-pod-watch-callback
   "Make a callback function that is passed to the pod-watch callback. This callback forwards changes to the cook.kubernetes.controller."
-  [{:keys [^ParallelWatchQueue parallel-watch-queue] :as kcc}]
+  [kcc]
   (fn pod-watch-callback
-    [_ ^V1Pod prev-pod ^V1Pod pod]
+    [_ prev-pod pod]
     (try
-      (let [name (or (some-> prev-pod .getMetadata .getName)
-                     (some-> pod .getMetadata .getName))
-            shardNum (mod (.hashCode name) (.getShardCount parallel-watch-queue))
-            ^Runnable event (fn []
-                              (try
-                                (if (nil? pod)
-                                  (controller/pod-deleted kcc prev-pod)
-                                  (controller/pod-update kcc pod))
-                                (catch Exception e
-                                  (log/error e "Error processing status update on" name))))]
-        (.submitEvent parallel-watch-queue event shardNum))
+      (if (nil? pod)
+        (controller/pod-deleted kcc prev-pod)
+        (controller/pod-update kcc pod))
       (catch Exception e
-        (log/error e "Error submitting pod status update")))))
+        (log/error e "Error processing status update")))))
 
 (defn task-ents->map-by-task-id
   "Given seq of task entities from datomic, generate a map of task-id -> entity."
@@ -416,8 +408,7 @@
                                      compute-cluster-launch-rate-limiter cook-pool-taint-name cook-pool-taint-prefix
                                      cook-pool-taint2-name cook-pool-taint2-value
                                      cook-pool-label-name cook-pool-label-prefix
-                                     controller-lock-objects kill-lock-object
-                                     parallel-watch-queue]
+                                     controller-lock-objects kill-lock-object]
   cc/ComputeCluster
   (launch-tasks [this pool-name matches process-task-post-launch-fn]
     (let [task-metadata-seq (mapcat :task-metadata-seq matches)]
@@ -895,8 +886,6 @@
            name
            namespace
            node-blocklist-labels
-           parallel-watch-max-outstanding
-           parallel-watch-shards
            read-timeout-seconds
            scan-frequency-seconds
            state
@@ -917,8 +906,6 @@
          state :running
          state-locked? false
          use-google-service-account? true
-         parallel-watch-max-outstanding 1000
-         parallel-watch-shards 200
          cook-pool-taint-prefix ""
          cook-pool-label-prefix ""
          use-token-refreshing-authenticator? false}
@@ -976,7 +963,6 @@
                                                     (with-meta (vec (repeatedly lock-shard-count #(ReentrantLock.)))
                                                                {:json-value (str "<count of " lock-shard-count " ReentrantLocks>")})
                                                     ; cluster-level kill-lock. See cc/kill-lock-object
-                                                    (ReentrantReadWriteLock. true)
-                                                    (ParallelWatchQueue. controller-executor-service parallel-watch-max-outstanding parallel-watch-shards))]
+                                                    (ReentrantReadWriteLock. true))]
     (cc/register-compute-cluster! compute-cluster)
     compute-cluster))
