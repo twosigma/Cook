@@ -1700,9 +1700,15 @@
           ; running on the same host twice. So, we need to avoid running a
           ; real job pod on any of the hosts that it won't be able to run on.
           :pod-hostnames-to-avoid (constraints/job->previous-hosts-to-avoid job)
-          :task-request {:scalar-requests (walk/stringify-keys pool-specific-resources)
+          :task-request {:scalar-requests (job->scalar-request job)
                          :job (merge job {:job/pool {:pool/name pool-name}})
-                         ; Need to pass in resources to task-metadata->pod for gpu count
+                         ; Passing resources ensures task-metadata->pod accounts
+                         ; for GPU, disk request, and disk limit.
+                         ;
+                         ; Fenzo does not consider GPU in bin packing, so it
+                         ; has historically not been specified in scalar-requests.
+                         ; Pod spec generation consequently expects the GPU count
+                         ; to be specified in resources.
                          :resources pool-specific-resources}})))))
 
 (defn create-kubernetes-jobs-launcher
