@@ -27,6 +27,7 @@
             [metrics.timers :as timers]
             [opentracing-clj.core :as tracing])
   (:import (com.google.auth.oauth2 GoogleCredentials)
+           (com.google.common.util.concurrent ThreadFactoryBuilder)
            (com.twosigma.cook.kubernetes TokenRefreshingAuthenticator ParallelWatchQueue)
            (io.kubernetes.client.openapi ApiClient)
            (io.kubernetes.client.openapi.models V1Node V1Pod)
@@ -759,7 +760,10 @@
   (.refresh scoped-credentials)
   (str "Bearer " (.getTokenValue (.getAccessToken scoped-credentials))))
 
-(def ^ScheduledExecutorService bearer-token-executor (Executors/newSingleThreadScheduledExecutor))
+(def ^ScheduledExecutorService bearer-token-executor (Executors/newSingleThreadScheduledExecutor
+                                                       (-> (ThreadFactoryBuilder.)
+                                                           (.setNameFormat "Cook's bearer-token-executor %d")
+                                                           .build)))
 
 (defn make-bearer-token-refresh-task
   "Returns a Runnable which uses scoped-credentials to generate a bearer token and sets it on the api-client"
@@ -942,7 +946,10 @@
                                     kubeconfig-context
                                     read-timeout-seconds
                                     use-token-refreshing-authenticator?)
-        controller-executor-service (Executors/newFixedThreadPool controller-num-threads)
+        controller-executor-service (Executors/newFixedThreadPool controller-num-threads
+                                                                  (-> (ThreadFactoryBuilder.)
+                                                                      (.setNameFormat (str "Cook's controller-executor-for " name " %d"))
+                                                                      .build))
         compute-cluster-launch-rate-limiter (cook.rate-limit/create-compute-cluster-launch-rate-limiter name compute-cluster-launch-rate-limits)
         lock-shard-count (:controller-lock-num-shards (config/kubernetes))
         compute-cluster (->KubernetesComputeCluster api-client

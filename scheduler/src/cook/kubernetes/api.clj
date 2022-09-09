@@ -26,7 +26,8 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (:import (com.google.gson JsonSyntaxException)
+  (:import (com.google.common.util.concurrent ThreadFactoryBuilder)
+           (com.google.gson JsonSyntaxException)
            (com.twosigma.cook.kubernetes FinalizerHelper WatchHelper)
            (io.kubernetes.client.custom IntOrString Quantity Quantity$Format)
            (io.kubernetes.client.openapi ApiClient ApiException JSON)
@@ -121,7 +122,10 @@
 ; node is deleted, which we don't tolerate.
 (def k8s-deletion-candidate-taint "DeletionCandidateOfClusterAutoscaler")
 
-(def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool))
+(def ^ExecutorService kubernetes-executor (Executors/newCachedThreadPool
+                                            (-> (ThreadFactoryBuilder.)
+                                                (.setNameFormat "Cook's kubernetes-executor %d")
+                                                .build)))
 
 ; Cook, Fenzo, and Mesos use mebibytes (MiB) for memory.
 ; Convert bytes from k8s to MiB when passing to Fenzo,
@@ -398,28 +402,21 @@
     ; We want to process all changes through the callback process.
     ; So compute the delta between the old and new and process those via the callbacks.
     ; Note as a side effect, the callbacks mutate all-pods-atom
-    (let [tasks (set/union new-pod-names old-pod-names)
-          futures
-          (doall
-            (map (fn [task]
-                   (.submit
-                     controller-executor-service
-                     ^Callable (fn []
-                                 (log-structured/info "Pod watch doing callback for task"
-                                           {:compute-cluster compute-cluster-name
-                                            :pod-name (:name task)
-                                            :pod-namespace (:namespace task)
-                                            :new? (contains? new-pod-names task)
-                                            :old? (contains? old-pod-names task)})
-                                 (doseq [callback callbacks]
-                                   (try
-                                     (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
-                                     (catch Exception e
-                                       (log-structured/error (print-str "Pod watch error while processing callback for" task)
-                                                             {:compute-cluster compute-cluster-name}
-                                                             e)))))))
-                 tasks))]
-      (run! deref futures))
+    (let [tasks (set/union new-pod-names old-pod-names)]
+      (doseq [task tasks]
+        (log-structured/info "Pod watch doing callback for task"
+                             {:compute-cluster compute-cluster-name
+                              :pod-name (:name task)
+                              :pod-namespace (:namespace task)
+                              :new? (contains? new-pod-names task)
+                              :old? (contains? old-pod-names task)})
+        (doseq [callback callbacks]
+          (try
+            (callback task (get old-all-pods task) (get namespaced-pod-name->pod task))
+            (catch Exception e
+              (log-structured/error (print-str "Pod watch error while processing callback for" task)
+                                    {:compute-cluster compute-cluster-name}
+                                    e))))))
     (log-structured/info "Pod watch done doing callbacks for tasks, starting handling pod watch updates"
                          {:compute-cluster compute-cluster-name})
     (let [watch (create-pod-watch api-client resource-version)]
