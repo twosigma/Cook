@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.63.3] - 2022-09-13
+### Changed
+- Parallelize Kubernetes watch processing, from @scrosby
+
 ## [1.63.2] - 2022-09-09
 ### Fixed
 - Do not set scalar-requests to pool specific resources for Kenzo pods, from @ahaysx
