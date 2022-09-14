@@ -537,8 +537,8 @@
                            :labels [:compute-cluster]
                            :quantiles default-summary-quantiles})
       (prometheus/gauge resource-capacity
-                        {:description "Total available capacity of the given resource per cluster"
-                         :labels [:compute-cluster :pool :resource :resource-subtype]})
+                        {:description "Total available capacity of the given resource per cluster and pool"
+                         :labels [:compute-cluster :resource :resource-subtype]})
       (prometheus/gauge resource-consumption
                         {:description "Total consumption of the given resource per cluster"
                          :labels [:compute-cluster :pool :resource :resource-subtype]})

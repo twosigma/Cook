@@ -124,8 +124,8 @@
     (prom/set prom/resource-capacity {:compute-cluster compute-cluster-name :pool pool-name :resource "nodes"} number-nodes-total)
     (prom/set prom/resource-capacity {:compute-cluster compute-cluster-name :pool pool-name :resource "cpu"} total-cpus-capacity)
     (prom/set prom/resource-capacity {:compute-cluster compute-cluster-name :pool pool-name :resource "mem"} total-mem-capacity)
-    (prom/set prom/resource-consumption {:compute-cluster compute-cluster-name :pool pool-name :resource "cpu"} total-cpus-consumption)
-    (prom/set prom/resource-consumption {:compute-cluster compute-cluster-name :pool pool-name :resource "mem"} total-mem-consumption)
+    (prom/set prom/resource-consumption {:compute-cluster compute-cluster-name :resource "cpu"} total-cpus-consumption)
+    (prom/set prom/resource-consumption {:compute-cluster compute-cluster-name :resource "mem"} total-mem-consumption)
     (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name) total-cpus-capacity)
     (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name) total-mem-capacity)
     (monitor/set-counter! (metrics/counter "consumption-cpus" compute-cluster-name) total-cpus-consumption)
@@ -138,7 +138,7 @@
       (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-capacity gpu-model))
       (prom/set prom/resource-consumption
-                {:compute-cluster compute-cluster-name :pool pool-name :resource "gpu" :resource-subtype gpu-model}
+                {:compute-cluster compute-cluster-name :resource "gpu" :resource-subtype gpu-model}
                 (get gpu-model->total-consumed gpu-model 0))
       (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-consumed gpu-model 0)))
@@ -149,7 +149,7 @@
       (monitor/set-counter! (metrics/counter (str "capacity-disk-" disk-type) compute-cluster-name)
                             (get disk-type->total-capacity disk-type))
       (prom/set prom/resource-consumption
-                {:compute-cluster compute-cluster-name :pool pool-name :resource "disk" :resource-subtype disk-type}
+                {:compute-cluster compute-cluster-name :resource "disk" :resource-subtype disk-type}
                 (get disk-type->total-consumed disk-type 0))
       (monitor/set-counter! (metrics/counter (str "consumption-disk-" disk-type) compute-cluster-name)
                             (get disk-type->total-consumed disk-type 0)))
