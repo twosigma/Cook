@@ -131,6 +131,8 @@
 (def pod-waiting-duration :cook/scheduler-kubernetes-pod-duration-until-waiting-seconds)
 (def pod-running-duration :cook/scheduler-kubernetes-pod-duration-until-running-seconds)
 (def offer-match-timer :cook/scheduler-kubernetes-offer-match-duration-seconds)
+(def resource-capacity :cook/scheduler-kubernetes-resource-capacity)
+(def resource-consumption :cook/scheduler-kubernetes-resource-consumption)
 
 ;; Mesos metrics
 (def mesos-heartbeats :cook/scheduler-mesos-heartbeats-count)
@@ -534,6 +536,12 @@
                           {:description "Latency distribution of matching an offer"
                            :labels [:compute-cluster]
                            :quantiles default-summary-quantiles})
+      (prometheus/gauge resource-capacity
+                        {:description "Total available capacity of the given resource per cluster"
+                         :labels [:compute-cluster :resource :resource-subtype]})
+      (prometheus/gauge resource-consumption
+                        {:description "Total consumption of the given resource per cluster"
+                         :labels [:compute-cluster :resource :resource-subtype]})
       ;; Mesos metrics -------------------------------------------------------------------------------------------------
       (prometheus/counter mesos-heartbeats
                           {:description "Count of mesos heartbeats"})
