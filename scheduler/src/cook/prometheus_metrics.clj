@@ -526,11 +526,11 @@
                            :quantiles default-summary-quantiles})
       (prometheus/summary pod-waiting-duration
                           {:description "Latency distribution of the time until a pod is waiting"
-                           :labels [:compute-cluster :synthetic]
+                           :labels [:compute-cluster :synthetic :kubernetes-scheduler-pod]
                            :quantiles default-summary-quantiles})
       (prometheus/summary pod-running-duration
                           {:description "Latency distribution of the time until a pod is running"
-                           :labels [:compute-cluster :synthetic]
+                           :labels [:compute-cluster :synthetic :kubernetes-scheduler-pod]
                            :quantiles default-summary-quantiles})
       (prometheus/summary offer-match-timer
                           {:description "Latency distribution of matching an offer"
