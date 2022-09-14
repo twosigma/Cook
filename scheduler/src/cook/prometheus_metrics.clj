@@ -538,10 +538,10 @@
                            :quantiles default-summary-quantiles})
       (prometheus/gauge resource-capacity
                         {:description "Total available capacity of the given resource per cluster and pool"
-                         :labels [:compute-cluster :resource :resource-subtype]})
+                         :labels [:compute-cluster :pool :resource :resource-subtype]})
       (prometheus/gauge resource-consumption
                         {:description "Total consumption of the given resource per cluster"
-                         :labels [:compute-cluster :pool :resource :resource-subtype]})
+                         :labels [:compute-cluster :resource :resource-subtype]})
       ;; Mesos metrics -------------------------------------------------------------------------------------------------
       (prometheus/counter mesos-heartbeats
                           {:description "Count of mesos heartbeats"})
