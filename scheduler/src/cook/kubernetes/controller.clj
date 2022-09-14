@@ -41,7 +41,7 @@
                  "process-lock-acquire"
                  (:name ~compute-cluster)))
              prom-stop-fn#
-             (prom/start-timer prom/process-lock-acquire-duration {:compute-cluster ~compute-cluster})]
+             (prom/start-timer prom/process-lock-acquire-duration {:compute-cluster (:name ~compute-cluster)})]
          (.lock lock-object#)
          (try
            (.stop timer-context#)
