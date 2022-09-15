@@ -106,7 +106,11 @@
                                                                  %)
                                        node-name->available)
         number-nodes-schedulable (count node-name->schedulable)
-        number-nodes-total (count node-name->node)]
+        number-nodes-total (count node-name->node)
+        total-cpus-capacity (total-resource node-name->capacity :cpus)
+        total-mem-capacity (total-resource node-name->capacity :mem)
+        total-cpus-consumption (total-resource node-name->consumed :cpus)
+        total-mem-consumption (total-resource node-name->consumed :mem)]
 
     (log-structured/info "Generating offers"
                          {:compute-cluster compute-cluster-name
@@ -117,23 +121,36 @@
                           :first-ten-capacity (print-str (take 10 node-name->capacity))
                           :first-ten-consumed (print-str (take 10 node-name->consumed))})
 
-    (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name)
-                          (total-resource node-name->capacity :cpus))
-    (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name)
-                          (total-resource node-name->capacity :mem))
-    (monitor/set-counter! (metrics/counter "consumption-cpus" compute-cluster-name)
-                          (total-resource node-name->consumed :cpus))
-    (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name)
-                          (total-resource node-name->consumed :mem))
+    (prom/set prom/resource-capacity {:compute-cluster compute-cluster-name :pool pool-name :resource "nodes"} number-nodes-total)
+    (prom/set prom/resource-capacity {:compute-cluster compute-cluster-name :pool pool-name :resource "cpu"} total-cpus-capacity)
+    (prom/set prom/resource-capacity {:compute-cluster compute-cluster-name :pool pool-name :resource "mem"} total-mem-capacity)
+    (prom/set prom/resource-consumption {:compute-cluster compute-cluster-name :resource "cpu"} total-cpus-consumption)
+    (prom/set prom/resource-consumption {:compute-cluster compute-cluster-name :resource "mem"} total-mem-consumption)
+    (monitor/set-counter! (metrics/counter "capacity-cpus" compute-cluster-name) total-cpus-capacity)
+    (monitor/set-counter! (metrics/counter "capacity-mem" compute-cluster-name) total-mem-capacity)
+    (monitor/set-counter! (metrics/counter "consumption-cpus" compute-cluster-name) total-cpus-consumption)
+    (monitor/set-counter! (metrics/counter "consumption-mem" compute-cluster-name) total-mem-consumption)
 
     (doseq [gpu-model gpu-models]
+      (prom/set prom/resource-capacity
+                {:compute-cluster compute-cluster-name :pool pool-name :resource "gpu" :resource-subtype gpu-model}
+                (get gpu-model->total-capacity gpu-model))
       (monitor/set-counter! (metrics/counter (str "capacity-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-capacity gpu-model))
+      (prom/set prom/resource-consumption
+                {:compute-cluster compute-cluster-name :resource "gpu" :resource-subtype gpu-model}
+                (get gpu-model->total-consumed gpu-model 0))
       (monitor/set-counter! (metrics/counter (str "consumption-gpu-" gpu-model) compute-cluster-name)
                             (get gpu-model->total-consumed gpu-model 0)))
     (doseq [disk-type disk-types]
+      (prom/set prom/resource-capacity
+                {:compute-cluster compute-cluster-name :pool pool-name :resource "disk" :resource-subtype disk-type}
+                (get disk-type->total-capacity disk-type))
       (monitor/set-counter! (metrics/counter (str "capacity-disk-" disk-type) compute-cluster-name)
                             (get disk-type->total-capacity disk-type))
+      (prom/set prom/resource-consumption
+                {:compute-cluster compute-cluster-name :resource "disk" :resource-subtype disk-type}
+                (get disk-type->total-consumed disk-type 0))
       (monitor/set-counter! (metrics/counter (str "consumption-disk-" disk-type) compute-cluster-name)
                             (get disk-type->total-consumed disk-type 0)))
 
@@ -169,7 +186,6 @@
                    :executor-ids []
                    :compute-cluster compute-cluster
                    :reject-after-match-attempt true
-                   ; TODO: add a timer here when we add it to mesos as well
                    :offer-match-timer (timers/start (ccmetrics/timer "offer-match-timer" compute-cluster-name))
                    :offer-match-timer-prom-stop-fn (prom/start-timer prom/offer-match-timer {:compute-cluster compute-cluster-name})}))))))
 
