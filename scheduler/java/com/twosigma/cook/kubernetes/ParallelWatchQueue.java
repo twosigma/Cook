@@ -97,7 +97,7 @@ public class ParallelWatchQueue {
                     var event = deque.removeFirst();
                     // Mark event as dequeed so we release any backpressure.
                     queueSlotsLeft.release();
-                    executor.submit(event);
+                    event.run();
                 }
             } finally {
                 lock.unlock();
