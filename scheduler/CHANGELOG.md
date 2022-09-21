@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.63.4] - 2022-09-21
+### Fixed
+- Fixed bug in parallelized Kubernetes watch processing, from @scrosby
+### Changed
+- Make prometheus JVM metrics use compute cluster name, from @samincheva
+
 ## [1.63.3] - 2022-09-13
 ### Changed
 - Parallelize Kubernetes watch processing, from @scrosby
