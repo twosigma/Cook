@@ -84,6 +84,7 @@
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
+(timers/deftimer [cook-mesos scheduler generate-pool-user-usage-map-duration])
 
 (defn metric-title
   ([metric-name pool]
@@ -708,7 +709,36 @@
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
+(def cached-user-usage-map-atom (atom nil))
+(defn generate-pool-user-usage-map
+  "Returns a mapping from user to usage stats"
+  [unfiltered-db]
+  (tracing/with-span
+    [s {:name "scheduler.generate-pool-user-usage-map" :tags {:component tracing-component-tag}}]
+    (prom/with-duration
+      prom/scheduler-generate-user-usage-map-duration {}
+      (timers/time!
+        generate-pool-user-usage-map-duration
+        (->> (tools/get-running-task-ents unfiltered-db)
+             (map :job/_instance)
+             (group-by #(cached-queries/job->pool-name %))
+             (pc/map-vals
+               (fn [jobs-for-pool] (->> jobs-for-pool
+                                        (group-by :job/user)
+                                        (pc/map-vals (fn [jobs]
+                                                       (->> jobs
+                                                            (map tools/job->usage)
+                                                            (reduce (partial merge-with +)))))))))))))
+(defn update-pool-user-usage-map
+  []
+  (reset! cached-user-usage-map-atom (generate-pool-user-usage-map datomic/conn)))
+
 (defn generate-user-usage-map
+  "Returns a mapping from user to usage stats from cached data"
+  [pool-name]
+  (get @cached-user-usage-map-atom pool-name))
+
+(defn generate-user-usage-map-old
   "Returns a mapping from user to usage stats"
   [unfiltered-db pool-name]
   (tracing/with-span
@@ -1555,7 +1585,7 @@
   "Handle scheduling pending jobs using the Fenzo Scheduler."
   [conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache
    scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-   job->acceptable-compute-clusters-fn user->quota user->usage-future]
+   job->acceptable-compute-clusters-fn user->quota user->usage]
   (log-structured/info "Running handler for Fenzo pool" {:pool pool-name})
   (prom/with-duration
     prom/match-jobs-event-duration {:pool pool-name}
@@ -1595,9 +1625,6 @@
                                              ; and only store if it is a new node.
                                              (when-not (ccache/get-if-present agent-attributes-cache identity slave-id)
                                                (ccache/put-cache! agent-attributes-cache identity slave-id (offer/get-offer-attr-map offer)))))
-                      user->usage (tracing/with-span [s {:name "scheduler.offer-handler.resolve-user-to-usage-future"
-                                                         :tags {:pool pool-name :component tracing-component-tag}}]
-                                                     @user->usage-future)
                       matched-head? (handle-resource-offers! conn fenzo-state pool-name->pending-jobs-atom
                                                              mesos-run-as-user user->usage user->quota
                                                              num-considerable offers
@@ -1748,7 +1775,7 @@
   "Handle scheduling pending jobs using the Kubernetes Scheduler."
   [conn pool-name->pending-jobs-atom pool-name
    {:keys [max-jobs-considered minimum-scheduling-capacity-threshold scheduling-pause-time-ms]}
-   compute-clusters job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user]
+   compute-clusters job->acceptable-compute-clusters-fn user->quota user->usage mesos-run-as-user]
   (log-structured/info "Running handler for Kubernetes Scheduler pool" {:pool pool-name})
   (prom/with-duration
     prom/scheduler-schedule-jobs-event-duration {:pool pool-name}
@@ -1778,9 +1805,6 @@
            (if (> available-scheduling-capacity minimum-scheduling-capacity-threshold)
              (let [db (db conn)
                    pending-jobs (get @pool-name->pending-jobs-atom pool-name)
-                   user->usage (tracing/with-span [s {:name "scheduler.kubernetes-handler.resolve-user-to-usage-future"
-                                                      :tags {:pool pool-name :component tracing-component-tag}}]
-                                 @user->usage-future)
                    considerable-jobs (pending-jobs->considerable-jobs db pending-jobs user->quota user->usage max-considerable pool-name)
                    considerable-job-uuids (set (map :job/uuid considerable-jobs))]
                (log-structured/info "Considering jobs" {:pool pool-name :number-considered-jobs (count considerable-job-uuids)
@@ -2454,16 +2478,15 @@
                    ;;  2. Once the above two items are addressed, user->usage should always correctly
                    ;;     reflect *Cook*'s understanding of the state of the world at this point.
                    ;;     When this happens, users should never exceed their quota
-                   user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span 
-                                                (generate-user-usage-map (d/db conn) pool-name)))
+                   user->usage (generate-user-usage-map pool-name)
                    compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                    user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))]
                (if using-kubernetes-scheduler?
                  (handle-kubernetes-scheduler-pool conn pool-name->pending-jobs-atom pool-name scheduler-config compute-clusters
-                                                   job->acceptable-compute-clusters-fn user->quota user->usage-future mesos-run-as-user)
+                                                   job->acceptable-compute-clusters-fn user->quota user->usage mesos-run-as-user)
                  (handle-fenzo-pool conn fenzo fenzo-state resources-atom pool-name->pending-jobs-atom agent-attributes-cache
                                     scheduler-config rebalancer-reservation-atom mesos-run-as-user pool-name compute-clusters
-                                    job->acceptable-compute-clusters-fn user->quota user->usage-future)))
+                                    job->acceptable-compute-clusters-fn user->quota user->usage)))
              (catch Exception e
                (log-structured/error "Pool handler encountered exception; continuing" {:pool pool-name} e)))))
        (log-structured/info "Done with pool handler" {:pool pool-name}))
@@ -2478,7 +2501,10 @@
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
-  (let [{:keys [match-trigger-chan rank-trigger-chan]} trigger-chans
+  ; We're the leader. Make sure we have an initial set of user usage information
+  (update-pool-user-usage-map)
+
+  (let [{:keys [match-trigger-chan rank-trigger-chan generate-pool-user-usage-map-trigger-chan]} trigger-chans
         pools (->> conn d/db pool/all-pools (filter pool/schedules-jobs?))
         pools' (if (-> pools count pos?)
                  pools
@@ -2504,6 +2530,11 @@
                                  (pool->scheduler-config name) (pool->match-trigger-chan name)
                                  rebalancer-reservation-atom mesos-run-as-user name
                                  cluster-name->compute-cluster-atom job->acceptable-compute-clusters-fn)))]
+    (tools/chime-at-ch
+      generate-pool-user-usage-map-trigger-chan
+      (fn trigger-global-pool-user-usage-map-iteration []
+        (log/info "Updating global pool-user-usage-map")
+        (update-pool-user-usage-map)))
     (prepare-match-trigger-chan match-trigger-chan pools')
     (async/go-loop []
       (when-let [x (async/<! match-trigger-chan)]
