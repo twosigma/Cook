@@ -731,7 +731,7 @@
                                                             (reduce (partial merge-with +)))))))))))))
 (defn update-pool-user-usage-map
   []
-  (reset! cached-user-usage-map-atom (generate-pool-user-usage-map datomic/conn)))
+  (reset! cached-user-usage-map-atom (generate-pool-user-usage-map (d/db datomic/conn))))
 
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats from cached data"
