@@ -2400,6 +2400,7 @@
           output-atom (atom [])]
       (with-redefs [sched/persist-mea-culpa-failure-limit! (fn [_ _])
                     d/db (fn [_])
+                    sched/update-pool-user-usage-map (fn [])
                     pool/all-pools
                     (fn [_]
                       [{:pool/name "pool 1"
