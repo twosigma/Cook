@@ -1,3 +1,11 @@
+> :warning: **Cook Scheduler Development Has Ceased**
+>
+>After seven years of developing Cook Scheduler we have made the decision to archive the project. Cook will remain available on GitHub in archive mode but no further development will occur.
+>
+>When Cook was open sourced it solved difficult problems in on-premises, capacity-constrained data centers. Today, however, the embrace of the public cloud has changed the problems that need to be solved. This shift is also reflected in slowing community contribution to Cook and the emergence of many other open source projects in this space. Given this, it no longer makes sense for us to maintain Cook as an open source project.
+>
+>We are thankful for the opportunity to have shared Cook with the community and grateful for your contributions. Two Sigma remains committed to supporting open source software. You can find out more about our other projects and contributions here: https://www.twosigma.com/open-source/.
+
 <img src="./cook.svg" align="right" width="175px" height="175px">
 
 # Cook Scheduler
