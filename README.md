@@ -10,8 +10,6 @@
 
 # Cook Scheduler
 
-[![Slack Status](http://cookscheduler.herokuapp.com/badge.svg)](http://cookscheduler.herokuapp.com/)
-
 Welcome to Two Sigma's Cook Scheduler!
 
 What is Cook?
