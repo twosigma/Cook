@@ -604,7 +604,8 @@
 
 (deftest mesos-mock-kill
   ;; Mock this out with a stub string, as the compute cluster shouldn't be used anywhere.
-  (with-redefs [cc/compute-cluster-name->ComputeCluster "mesos-mock-kill"]
+  (with-redefs [cc/compute-cluster-name->ComputeCluster "mesos-mock-kill"
+                cook.scheduler.scheduler/update-pool-user-usage-map (fn [])]
     (testing "kill task"
       (let [registered-atom (atom false)
             offer-atom (atom [])

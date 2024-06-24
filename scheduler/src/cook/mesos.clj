@@ -102,6 +102,7 @@
     (cond->
         {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
          :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
+         :generate-pool-user-usage-map-trigger-chan (prepare-trigger-chan (time/minutes 1))
          :match-trigger-chan (async/chan (async/sliding-buffer 1))
          :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
          :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
