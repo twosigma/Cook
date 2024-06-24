@@ -2454,7 +2454,7 @@
                    ;;  2. Once the above two items are addressed, user->usage should always correctly
                    ;;     reflect *Cook*'s understanding of the state of the world at this point.
                    ;;     When this happens, users should never exceed their quota
-                   user->usage-future (future (tracing/with-span [s1 {:from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span 
+                   user->usage-future (future (tracing/with-span [s1 {:name "scheduler.pool-handler.user-usage-future-calculate" :from s :finish? false}] ; NOTE: finish? is set to false to prevent early finishing of the span
                                                 (generate-user-usage-map (d/db conn) pool-name)))
                    compute-clusters (vals @cook.compute-cluster/cluster-name->compute-cluster-atom)
                    user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))]
